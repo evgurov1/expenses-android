@@ -47,6 +47,8 @@ data class AssistantUiState(
     val messages: List<ChatMessage> = emptyList(),
     val draft: String = "",
     val busy: Boolean = false,
+    /** Модель читает инструкцию и данные о кредитах: в первый раз это может занять минуту. */
+    val warming: Boolean = false,
 )
 
 @HiltViewModel
@@ -103,14 +105,16 @@ class AssistantViewModel @Inject constructor(
                 _state.update { it.copy(availability = AssistantAvailability.UNAVAILABLE, error = "Не удалось загрузить модель в память.") }
                 return@launch
             }
-            _state.update { it.copy(availability = AssistantAvailability.READY) }
+            _state.update { it.copy(availability = AssistantAvailability.READY, warming = true) }
             // Пока пользователь читает экран, заранее считаем системный запрос — первый ответ придёт быстрее.
+            // Правила и инструменты берутся из сохранённого кэша, заново считаются только данные о кредитах.
             runCatching {
                 val system = AgentPrompt.system(tools().facts())
                 assistant.restorePrompt()
                 assistant.generate("<|im_start|>system\n$system${AgentPrompt.END}\n", maxTokens = 0).collect {}
                 assistant.savePrompt()
             }
+            _state.update { it.copy(warming = false) }
         }
     }
 
@@ -122,7 +126,10 @@ class AssistantViewModel @Inject constructor(
                 draft = "",
                 busy = true,
                 messages = it.messages + ChatMessage(q, fromUser = true) +
-                    ChatMessage("", fromUser = false, pending = true, status = "Думаю…"),
+                    ChatMessage(
+                        "", fromUser = false, pending = true,
+                        status = if (it.warming) "Готовлю помощника, в первый раз это до пары минут…" else "Думаю…",
+                    ),
             )
         }
         viewModelScope.launch {

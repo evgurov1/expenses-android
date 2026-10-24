@@ -180,7 +180,21 @@ private fun Header(state: AssistantUiState, onDownload: () -> Unit, onAsk: (Stri
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = 12.dp),
             )
-            AssistantAvailability.READY -> if (state.messages.isEmpty()) {
+            AssistantAvailability.READY -> if (state.warming) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 16.dp)) {
+                    CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Text(
+                        "Готовлю помощника: читаю данные о кредитах. Можно уже задать вопрос — отвечу, как закончу.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(start = 12.dp),
+                    )
+                }
+                if (state.messages.isEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 16.dp)) {
+                        suggestions.forEach { q -> PillChip(selected = false, onClick = { onAsk(q) }, label = q) }
+                    }
+                }
+            } else if (state.messages.isEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 16.dp)) {
                     suggestions.forEach { q -> PillChip(selected = false, onClick = { onAsk(q) }, label = q) }
                 }

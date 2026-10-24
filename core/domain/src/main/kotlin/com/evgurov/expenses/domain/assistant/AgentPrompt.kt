@@ -21,36 +21,57 @@ object AgentPrompt {
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
-    private const val RULES = """Ты — помощник по кредитам в приложении «Расходы». Работаешь прямо в телефоне пользователя, без интернета.
-Отвечай по-русски, коротко и по делу: 2–5 предложений. Отвечай именно на последний вопрос.
-Цифры бери только из раздела «Данные» или из результатов инструментов. Не придумывай суммы, ставки и даты и не считай сам: ни одного числа, которого там нет.
-Вопросы про досрочное погашение, сроки закрытия с доплатой, экономию или нужную сумму доплаты — сначала вызови payoff_plan (если сумма не названа, возьми 10000), потом отвечай по его результату.
-Вопросы «сколько доплачивать, чтобы закрыть за N месяцев» и «закрою ли я всё или один кредит за N месяцев» — extra_for_target.
-Сравнение стратегий — compare_strategies, график или расписание платежей — payment_schedule.
-Вопросы про один кредит — loan_details, про ПДН в будущем — burden_forecast.
-Если пользователь сообщает, что внёс досрочный платёж, — record_early_payment; если называет свой доход — set_income. Эти действия меняют данные, поэтому приложение покажет их пользователю на подтверждение: не говори, что всё уже сохранено.
-Если пользователь называет дни зарплаты, сохрани их инструментом save_paydays и сразу построй график.
-Если данных не хватает, задай один уточняющий вопрос.
-Полезно знать: проценты начисляются на остаток каждый день, поэтому досрочный платёж выгоднее вносить как можно раньше — удобно в день зарплаты, сразу после того как отложены обязательные платежи. Многие банки списывают досрочку только в дату очередного платежа, поэтому деньги нужно держать на счёте кредита до этой даты и подать заявку в приложении банка. Выбирать «уменьшить срок», а не платёж. Внесённый досрочный платёж пользователь отмечает в приложении: экран кредита → «Внести досрочный платёж», график и ПДН пересчитаются.
-Не советуй брать новые кредиты и займы, кроме рефинансирования под меньшую ставку. Ты не финансовый консультант."""
+    // Порядок важен: правила и инструменты не меняются и считаются моделью один раз (кэш сохраняется в файл),
+    // а данные о кредитах идут в конце — при запуске пересчитываются только они.
+    private const val RULES = """Ты — помощник по кредитам в приложении «Расходы», работаешь в телефоне без интернета.
+Отвечай по-русски, коротко: 2–5 предложений, именно на последний вопрос.
+Числа бери только из «Данных» и результатов инструментов. Сам не считай и не придумывай суммы, ставки и даты.
+Какой инструмент вызвать:
+- досрочка, экономия, когда закроется с доплатой — payoff_plan (нет суммы — 10000);
+- сколько доплачивать, чтобы закрыть всё или один кредит за N месяцев — extra_for_target;
+- лавина или снежный ком — compare_strategies;
+- график, расписание, что платить с какой зарплаты — payment_schedule;
+- один кредит — loan_details; ПДН в будущем — burden_forecast;
+- пользователь внёс досрочный платёж — record_early_payment (уменьшил платёж — mode reduce_payment, иначе reduce_term);
+- назвал свой доход или зарплату в месяц — set_income;
+  эти два действия приложение сохранит после подтверждения пользователем, не пиши, что уже сохранено;
+- сам назвал дни зарплаты — save_paydays, потом payment_schedule. Дни не выдумывай: неизвестны — строй график без них.
+Не хватает данных — задай один вопрос.
+Полезно знать: проценты идут на остаток каждый день, поэтому досрочку выгоднее вносить раньше, удобно в день зарплаты. Многие банки списывают досрочку в дату платежа: деньги держать на счёте и подать заявку в приложении банка. Лучше уменьшать срок, а не платёж. Внесённую досрочку отмечают здесь: экран кредита → «Внести досрочный платёж».
+Не советуй новые кредиты, кроме рефинансирования под меньшую ставку. Ты не финансовый консультант."""
+
+    private fun tool(name: String, description: String, properties: String, required: String = "") =
+        """{"type":"function","function":{"name":"$name","description":"$description","parameters":{"type":"object","properties":{$properties},"required":[$required]}}}"""
+
+    private const val EXTRA = """"extra_monthly":{"type":"number","description":"Доплата, ₽ в месяц"}"""
+    private const val LOAN = """"loan":{"type":"string","description":"Название кредита"}"""
 
     private val TOOLS = listOf(
-        """{"type":"function","function":{"name":"payoff_plan","description":"Посчитать план досрочного погашения: сколько сэкономит доплата, когда закроется каждый кредит и все вместе.","parameters":{"type":"object","properties":{"extra_monthly":{"type":"number","description":"Доплата сверх обязательных платежей, рублей в месяц"},"lump_sum":{"type":"number","description":"Разовый досрочный платёж сейчас, рублей"},"strategy":{"type":"string","enum":["avalanche","snowball"],"description":"avalanche — сначала самая высокая ставка, snowball — сначала самый маленький остаток"}},"required":["extra_monthly"]}}}""",
-        """{"type":"function","function":{"name":"extra_for_target","description":"Сколько нужно доплачивать в месяц, чтобы закрыть все кредиты или один выбранный кредит за заданное число месяцев.","parameters":{"type":"object","properties":{"months":{"type":"integer","description":"За сколько месяцев закрыть"},"loan":{"type":"string","description":"Название кредита, если речь об одном кредите; пусто — все кредиты"}},"required":["months"]}}}""",
-        """{"type":"function","function":{"name":"compare_strategies","description":"Сравнить стратегии «лавина» и «снежный ком» при одной и той же доплате.","parameters":{"type":"object","properties":{"extra_monthly":{"type":"number","description":"Доплата, рублей в месяц"}},"required":["extra_monthly"]}}}""",
-        """{"type":"function","function":{"name":"payment_schedule","description":"Построить график платежей на ближайшие месяцы: что, сколько и с какой зарплаты платить, включая досрочку.","parameters":{"type":"object","properties":{"extra_monthly":{"type":"number","description":"Доплата, рублей в месяц; 0 — только обязательные платежи"},"months":{"type":"integer","description":"На сколько месяцев, от 1 до 12"}},"required":[]}}}""",
-        """{"type":"function","function":{"name":"record_early_payment","description":"Отметить досрочный платёж, который пользователь уже внёс в банке. Приложение покажет итог и попросит подтвердить.","parameters":{"type":"object","properties":{"loan":{"type":"string","description":"Название кредита"},"amount":{"type":"number","description":"Сумма, рублей"},"mode":{"type":"string","enum":["reduce_term","reduce_payment"],"description":"Что уменьшить: срок или платёж"},"date":{"type":"string","description":"Дата платежа ГГГГ-ММ-ДД, по умолчанию сегодня"}},"required":["loan","amount"]}}}""",
-        """{"type":"function","function":{"name":"set_income","description":"Указать доход пользователя в месяц (после налогов). Приложение попросит подтвердить.","parameters":{"type":"object","properties":{"monthly_income":{"type":"number","description":"Доход, рублей в месяц"}},"required":["monthly_income"]}}}""",
-        """{"type":"function","function":{"name":"loan_details","description":"Подробности по одному кредиту: остаток, ближайшие платежи, проценты впереди, дата последнего платежа, досрочки.","parameters":{"type":"object","properties":{"loan":{"type":"string","description":"Название кредита"}},"required":["loan"]}}}""",
-        """{"type":"function","function":{"name":"burden_forecast","description":"ПДН сейчас и когда она опустится ниже 80%, 50% и 30% — без доплат или с доплатой.","parameters":{"type":"object","properties":{"extra_monthly":{"type":"number","description":"Доплата, рублей в месяц; 0 — без доплат"}},"required":[]}}}""",
-        """{"type":"function","function":{"name":"save_paydays","description":"Запомнить, в какие числа месяца приходит зарплата или аванс.","parameters":{"type":"object","properties":{"days":{"type":"array","items":{"type":"integer"},"description":"Числа месяца, например [5, 20]"}},"required":["days"]}}}""",
+        tool(
+            "payoff_plan", "План досрочного погашения: экономия и когда закроется каждый кредит.",
+            """$EXTRA,"lump_sum":{"type":"number","description":"Разовый платёж сейчас, ₽"},"strategy":{"type":"string","enum":["avalanche","snowball"]}""",
+            "\"extra_monthly\"",
+        ),
+        tool(
+            "extra_for_target", "Сколько доплачивать, чтобы закрыть все кредиты или один за N месяцев.",
+            """"months":{"type":"integer"},"loan":{"type":"string","description":"Пусто — все кредиты"}""", "\"months\"",
+        ),
+        tool("compare_strategies", "Сравнить лавину и снежный ком.", EXTRA, "\"extra_monthly\""),
+        tool("payment_schedule", "График платежей по зарплатам на ближайшие месяцы.", """$EXTRA,"months":{"type":"integer"}"""),
+        tool(
+            "record_early_payment", "Отметить досрочный платёж, уже внесённый в банке.",
+            """$LOAN,"amount":{"type":"number"},"mode":{"type":"string","enum":["reduce_term","reduce_payment"],"description":"reduce_payment — если уменьшил платёж"},"date":{"type":"string","description":"ГГГГ-ММ-ДД, по умолчанию сегодня"}""",
+            "\"loan\",\"amount\"",
+        ),
+        tool("set_income", "Сохранить доход пользователя в месяц.", """"monthly_income":{"type":"number"}""", "\"monthly_income\""),
+        tool("loan_details", "Остаток, ближайшие платежи и проценты по одному кредиту.", LOAN, "\"loan\""),
+        tool("burden_forecast", "Когда ПДН опустится ниже 80, 50 и 30%.", EXTRA),
+        tool("save_paydays", "Запомнить дни зарплаты.", """"days":{"type":"array","items":{"type":"integer"}}""", "\"days\""),
     )
 
-    fun system(facts: String): String = buildString {
+    /** Неизменная часть системного запроса: правила и инструменты. */
+    val stablePart: String = buildString {
         appendLine(RULES)
-        appendLine()
-        appendLine("Данные:")
-        appendLine(facts)
         appendLine()
         appendLine("# Tools")
         appendLine()
@@ -64,8 +85,12 @@ object AgentPrompt {
         appendLine("For each function call, return a json object with function name and arguments within <tool_call></tool_call> XML tags:")
         appendLine("<tool_call>")
         appendLine("""{"name": <function-name>, "arguments": <args-json-object>}""")
-        append("</tool_call>")
+        appendLine("</tool_call>")
+        appendLine()
+        appendLine("Данные:")
     }
+
+    fun system(facts: String): String = stablePart + facts.trim()
 
     /** Полный запрос: система, переписка и начало ответа ассистента. */
     fun render(system: String, messages: List<AgentMessage>): String = buildString {

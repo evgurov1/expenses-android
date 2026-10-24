@@ -55,12 +55,17 @@ class LoanTools(
     /** Данные для системного запроса: кредиты, доход, ПДН, порядок погашения, дни зарплаты. */
     fun facts(): String = buildString {
         val advice = PayoffPlanner.advise(loans, 0, income = income, today = today)
-        append(AdvisorPrompt.facts(loans, advice, 0, income, today))
-        appendLine()
-        append(
+        // Дата меняется каждый день, поэтому она в самом конце: всё до неё модель берёт из кэша.
+        val (dateLines, rest) = AdvisorPrompt.facts(loans, advice, 0, income, today).lines()
+            // Подсказка для экрана «Как закрыть быстрее» модели не нужна: она начинает просить сумму доплаты.
+            .filterNot { it.startsWith("- Укажите, сколько готовы доплачивать") }
+            .partition { it.startsWith("Сегодня:") }
+        appendLine(rest.joinToString("\n").trim())
+        appendLine(
             if (paydays.isEmpty()) "Дни зарплаты неизвестны."
             else "Зарплата приходит ${paydays.joinToString(" и ")} числа.",
         )
+        append(dateLines.joinToString("\n"))
     }
 
     fun execute(call: ToolCall): ToolResult = runCatching {

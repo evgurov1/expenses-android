@@ -96,7 +96,9 @@ class LocalAssistant @Inject constructor(@ApplicationContext private val context
     suspend fun load(): Boolean = loadLock.withLock {
         if (isLoaded) return true
         if (modelFile.length() != MODEL_SIZE) return false
-        val threads = (Runtime.getRuntime().availableProcessors() - 2).coerceIn(2, 6)
+        // Замер на Galaxy S26: 5 потоков — около 40 токенов/с на чтение и 14 на ответ. Если занять все ядра,
+        // любое фоновое приложение тормозит общий расчёт в десятки раз, поэтому часть ядер оставляем свободной.
+        val threads = (Runtime.getRuntime().availableProcessors() - 3).coerceIn(2, 5)
         handle = withContext(llmThread) { LlamaNative.load(modelFile.absolutePath, CONTEXT_SIZE, threads) }
         isLoaded
     }

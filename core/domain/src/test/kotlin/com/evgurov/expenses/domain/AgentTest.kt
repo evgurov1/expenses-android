@@ -51,6 +51,9 @@ class AgentTest {
         assertTrue("Дни зарплаты неизвестны." in prompt)
         assertTrue("<|im_start|>user\n<tool_response>\nok\n</tool_response><|im_end|>\n" in prompt)
         assertTrue(prompt.endsWith("<|im_start|>assistant\n"))
+        assertTrue(system.startsWith(AgentPrompt.stablePart))
+        assertTrue(system, system.endsWith("Сегодня: 2026-10-24."))
+        System.getenv("PROMPT_DUMP")?.let { java.io.File(it).writeText(system) }
     }
 
     @Test
