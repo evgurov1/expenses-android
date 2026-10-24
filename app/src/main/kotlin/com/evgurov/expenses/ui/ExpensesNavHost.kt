@@ -1,0 +1,85 @@
+package com.evgurov.expenses.ui
+
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ReceiptLong
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import com.evgurov.expenses.ui.accounts.AccountsScreen
+import com.evgurov.expenses.ui.categories.CategoriesScreen
+import com.evgurov.expenses.ui.transactions.AddTransactionScreen
+import com.evgurov.expenses.ui.transactions.TransactionsScreen
+
+private object Routes {
+    const val TRANSACTIONS = "transactions"
+    const val ACCOUNTS = "accounts"
+    const val CATEGORIES = "categories"
+    const val ADD_TRANSACTION = "transactions/add"
+}
+
+private data class TopLevel(val route: String, val label: String, val icon: ImageVector)
+
+private val topLevel = listOf(
+    TopLevel(Routes.TRANSACTIONS, "Операции", Icons.AutoMirrored.Filled.ReceiptLong),
+    TopLevel(Routes.ACCOUNTS, "Счета", Icons.Filled.AccountBalanceWallet),
+    TopLevel(Routes.CATEGORIES, "Категории", Icons.Filled.Category),
+)
+
+@Composable
+fun ExpensesNavHost() {
+    val navController = rememberNavController()
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = backStackEntry?.destination?.route
+
+    Scaffold(
+        bottomBar = {
+            if (topLevel.any { it.route == currentRoute }) {
+                NavigationBar {
+                    topLevel.forEach { item ->
+                        NavigationBarItem(
+                            selected = currentRoute == item.route,
+                            onClick = {
+                                navController.navigate(item.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            },
+                            icon = { Icon(item.icon, contentDescription = null) },
+                            label = { Text(item.label) },
+                        )
+                    }
+                }
+            }
+        },
+    ) { padding ->
+        NavHost(
+            navController = navController,
+            startDestination = Routes.TRANSACTIONS,
+            modifier = Modifier.padding(bottom = padding.calculateBottomPadding()),
+        ) {
+            composable(Routes.TRANSACTIONS) {
+                TransactionsScreen(onAddClick = { navController.navigate(Routes.ADD_TRANSACTION) })
+            }
+            composable(Routes.ACCOUNTS) { AccountsScreen() }
+            composable(Routes.CATEGORIES) { CategoriesScreen() }
+            composable(Routes.ADD_TRANSACTION) {
+                AddTransactionScreen(onDone = { navController.popBackStack() })
+            }
+        }
+    }
+}
