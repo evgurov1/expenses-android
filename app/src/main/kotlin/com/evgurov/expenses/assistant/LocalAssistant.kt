@@ -56,7 +56,8 @@ class LocalAssistant @Inject constructor() {
         val request = generateContentRequest(TextPart(prompt)) {
             temperature = 0.2f
             topK = 16
-            maxOutputTokens = 320
+            // Больше 256 Gemini Nano не принимает.
+            maxOutputTokens = 256
         }
         return model.generateContentStream(request).map { response ->
             response.candidates.firstOrNull()?.text.orEmpty()
