@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.evgurov.expenses.domain.importing.LoanDocumentParser
+import com.evgurov.expenses.domain.importing.mergeLoans
 import com.evgurov.expenses.domain.model.LoanSource
 import com.evgurov.expenses.importing.ImportDraft
 import com.evgurov.expenses.importing.ImportDraftHolder
@@ -31,35 +32,39 @@ class ImportLoanViewModel @Inject constructor(
     private val _state = MutableStateFlow<ImportState>(ImportState.Idle)
     val state: StateFlow<ImportState> = _state.asStateFlow()
 
-    fun importPdf(uri: Uri) = run("Читаю PDF…", LoanSource.CONTRACT) { extractor.fromPdf(uri) }
-
-    fun importImage(uri: Uri) = run("Распознаю текст на изображении… Это может занять до минуты.", LoanSource.PHOTO) {
-        extractor.fromImage(uri)
+    /** Разбирает все выбранные файлы (PDF и картинки вперемешку) и собирает из них один кредит. */
+    fun importFiles(uris: List<Uri>) {
+        if (uris.isEmpty() || _state.value is ImportState.Working) return
+        viewModelScope.launch {
+            var anyPdf = false
+            val errors = mutableListOf<String>()
+            val parsed = uris.mapIndexedNotNull { index, uri ->
+                val counter = if (uris.size > 1) " (${index + 1} из ${uris.size})" else ""
+                runCatching {
+                    val pdf = extractor.isPdf(uri)
+                    anyPdf = anyPdf || pdf
+                    _state.value = ImportState.Working(
+                        if (pdf) "Читаю PDF$counter…" else "Распознаю текст на изображении$counter… Это может занять до минуты.",
+                    )
+                    LoanDocumentParser.parse(extractor.fromAny(uri))
+                }.onFailure { errors += it.message ?: it.javaClass.simpleName }.getOrNull()
+            }
+            val loan = parsed.mergeLoans()
+            _state.value = when {
+                !loan.isEmpty -> {
+                    drafts.put(ImportDraft(loan, if (anyPdf) LoanSource.CONTRACT else LoanSource.PHOTO))
+                    ImportState.Done
+                }
+                errors.isNotEmpty() && parsed.isEmpty() -> ImportState.Failed("Не удалось прочитать файлы: ${errors.first()}")
+                else -> ImportState.Failed(
+                    "Не нашёл данных кредита. Добавьте график платежей или договор в PDF, скриншот кредита из приложения банка " +
+                        "или более чёткое фото.",
+                )
+            }
+        }
     }
 
     fun reset() {
         _state.value = ImportState.Idle
-    }
-
-    private fun run(message: String, source: LoanSource, extract: suspend () -> String) {
-        if (_state.value is ImportState.Working) return
-        _state.value = ImportState.Working(message)
-        viewModelScope.launch {
-            val result = runCatching { LoanDocumentParser.parse(extract()) }
-            _state.value = result.fold(
-                onSuccess = { parsed ->
-                    if (parsed.isEmpty) {
-                        ImportState.Failed(
-                            "Не нашёл в документе данных кредита. Попробуйте график платежей или договор в PDF, " +
-                                "либо более чёткое фото.",
-                        )
-                    } else {
-                        drafts.put(ImportDraft(parsed, source))
-                        ImportState.Done
-                    }
-                },
-                onFailure = { ImportState.Failed("Не удалось прочитать файл: ${it.message ?: it.javaClass.simpleName}") },
-            )
-        }
     }
 }

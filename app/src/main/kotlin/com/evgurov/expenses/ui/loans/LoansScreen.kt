@@ -71,7 +71,7 @@ fun LoansScreen(
                 ExtendedFloatingActionButton(
                     onClick = onImportLoan,
                     icon = { Icon(Icons.Filled.DocumentScanner, contentDescription = null) },
-                    text = { Text("Из PDF или фото") },
+                    text = { Text("Загрузить документы") },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,
                 )
                 ExtendedFloatingActionButton(

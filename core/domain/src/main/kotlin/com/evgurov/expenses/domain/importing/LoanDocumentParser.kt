@@ -107,6 +107,33 @@ data class ParsedLoan(
 }
 
 /**
+ * Собирает один кредит из нескольких документов: графика в PDF, договора, скриншотов.
+ * График берём из документа, где строк больше всего; остальные поля — из первого документа, где они нашлись,
+ * начиная с документов с графиком (там суммы точнее, чем на скриншотах).
+ */
+fun List<ParsedLoan>.mergeLoans(): ParsedLoan {
+    val docs = filter { !it.isEmpty }.sortedByDescending { it.payments.size }
+    if (docs.isEmpty()) return ParsedLoan()
+    fun <T> pick(field: (ParsedLoan) -> T?): T? = docs.firstNotNullOfOrNull(field)
+    val withRate = docs.firstOrNull { it.annualRate != null && !it.rateIsEstimated } ?: docs.firstOrNull { it.annualRate != null }
+    return ParsedLoan(
+        bank = pick { it.bank },
+        contractNumber = pick { it.contractNumber },
+        contractDate = pick { it.contractDate },
+        principal = pick { it.principal },
+        annualRate = withRate?.annualRate,
+        rateIsEstimated = withRate?.rateIsEstimated ?: false,
+        regularPayment = pick { it.regularPayment },
+        termMonths = pick { it.termMonths },
+        currentDebt = pick { it.currentDebt },
+        creditLimit = pick { it.creditLimit },
+        remainingPayments = pick { it.remainingPayments },
+        nextPaymentDate = pick { it.nextPaymentDate },
+        payments = docs.first().payments,
+    )
+}
+
+/**
  * Разбирает текст графика платежей или договора, полученный из PDF или OCR.
  * Работает по структуре строк: дата и следующие за ней суммы, поэтому не зависит от конкретного банка.
  */

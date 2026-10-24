@@ -1,6 +1,7 @@
 package com.evgurov.expenses.domain
 
 import com.evgurov.expenses.domain.importing.LoanDocumentParser
+import com.evgurov.expenses.domain.importing.mergeLoans
 import com.evgurov.expenses.domain.model.Loan
 import com.evgurov.expenses.domain.model.LoanSource
 import com.evgurov.expenses.domain.model.LoanType
@@ -213,6 +214,26 @@ class LoanDocumentParserTest {
         val parsed = LoanDocumentParser.parse("15 января спишем\n12 000 ₽", today = LocalDate.of(2026, 12, 20))
         assertEquals(LocalDate.of(2027, 1, 15), parsed.nextPaymentDate)
         assertEquals(12_000_00L, parsed.regularPayment)
+    }
+
+    @Test
+    fun `merges schedule pdf with app screenshot`() {
+        val pdf = LoanDocumentParser.parse(
+            """
+            Сумма кредита: 100 000.00 ₽
+            1 15.02.2026 10 000.00 ₽ 8 000.00 ₽ 2 000.00 ₽ 92 000.00 ₽
+            2 15.03.2026 10 000.00 ₽ 8 200.00 ₽ 1 800.00 ₽ 83 800.00 ₽
+            3 15.04.2026 10 000.00 ₽ 8 400.00 ₽ 1 600.00 ₽ 75 400.00 ₽
+            """.trimIndent(),
+        )
+        val screenshot = LoanDocumentParser.parse("Т-Банк\nСтавка 24,9%\nОсталось выплатить\n\n75 400Р")
+        val merged = listOf(screenshot, LoanDocumentParser.parse("мусор"), pdf).mergeLoans()
+        assertEquals("ТБанк", merged.bank)
+        assertEquals(100_000_00L, merged.principal)
+        assertEquals(3, merged.schedule.size)
+        assertEquals(24.9, merged.annualRate!!, 0.001)
+        assertTrue(!merged.rateIsEstimated)
+        assertEquals(10_000_00L, merged.regularPayment)
     }
 
     @Test

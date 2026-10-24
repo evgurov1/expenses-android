@@ -32,6 +32,18 @@ class LoanTextExtractor @Inject constructor(
 ) {
     private val ocrLock = Mutex()
 
+    /** Любой файл: PDF или изображение. Тип берём из системы, а если его нет — по первым байтам. */
+    suspend fun fromAny(uri: Uri): String = if (isPdf(uri)) fromPdf(uri) else fromImage(uri)
+
+    fun isPdf(uri: Uri): Boolean {
+        val type = context.contentResolver.getType(uri)
+        if (type != null && type != "application/octet-stream") return type == "application/pdf"
+        return context.contentResolver.openInputStream(uri)?.use { input ->
+            val head = ByteArray(4)
+            input.read(head) == 4 && String(head, Charsets.US_ASCII) == "%PDF"
+        } ?: false
+    }
+
     suspend fun fromPdf(uri: Uri): String = withContext(Dispatchers.IO) {
         PDFBoxResourceLoader.init(context)
         val text = context.contentResolver.openInputStream(uri).use { input ->

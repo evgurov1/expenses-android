@@ -1,7 +1,6 @@
 package com.evgurov.expenses.ui.loans
 
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -14,8 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,11 +43,8 @@ fun ImportLoanScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    val pickPdf = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        uri?.let(viewModel::importPdf)
-    }
-    val pickImage = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
-        uri?.let(viewModel::importImage)
+    val pickFiles = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        viewModel.importFiles(uris)
     }
 
     LaunchedEffect(state) {
@@ -88,20 +83,12 @@ fun ImportLoanScreen(
 
             val working = state is ImportState.Working
             SourceCard(
-                icon = Icons.Filled.Description,
-                title = "PDF из банка",
-                text = "График платежей или договор. Самый точный вариант: из графика берём все платежи и остаток долга.",
+                icon = Icons.Filled.UploadFile,
+                title = "Выбрать файлы",
+                text = "Всё, что есть по кредиту: график платежей или договор в PDF, скриншоты из приложения банка, " +
+                    "фото документов. Можно выбрать несколько файлов сразу — данные соберутся в один кредит.",
                 enabled = !working,
-                onClick = { pickPdf.launch(arrayOf("application/pdf")) },
-            )
-            SourceCard(
-                icon = Icons.Filled.Image,
-                title = "Фото или скриншот",
-                text = "Скриншот кредита из приложения банка или фото договора. Снимайте ровно и при хорошем свете.",
-                enabled = !working,
-                onClick = {
-                    pickImage.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                },
+                onClick = { pickFiles.launch(arrayOf("application/pdf", "image/*")) },
             )
 
             when (val s = state) {
