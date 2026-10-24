@@ -14,6 +14,8 @@ room = "2.6.1"
 junit = "4.13.2"
 pdfbox = "2.0.27.0"
 tesseract = "4.7.0"
+# beta3+ требует Kotlin 2.3; beta2 совместима с текущим Kotlin.
+mlkit-genai-prompt = "1.0.0-beta2"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -38,6 +40,7 @@ room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 junit = { module = "junit:junit", version.ref = "junit" }
 pdfbox-android = { module = "com.tom-roush:pdfbox-android", version.ref = "pdfbox" }
 tesseract4android = { module = "cz.adaptech.tesseract4android:tesseract4android", version.ref = "tesseract" }
+mlkit-genai-prompt = { module = "com.google.mlkit:genai-prompt", version.ref = "mlkit-genai-prompt" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

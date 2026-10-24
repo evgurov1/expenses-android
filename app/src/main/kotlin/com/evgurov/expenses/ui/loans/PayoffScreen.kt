@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.Lightbulb
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -52,6 +53,7 @@ import java.util.Locale
 @Composable
 fun PayoffScreen(
     onBack: () -> Unit,
+    onAskAssistant: () -> Unit,
     viewModel: PayoffViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -137,6 +139,21 @@ fun PayoffScreen(
             }
 
             item { SummaryCard(advice) }
+            item {
+                AppCard(onClick = onAskAssistant) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null)
+                        Column(Modifier.weight(1f).padding(start = 14.dp)) {
+                            Text("Спросить помощника", style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                "Ответит на вопросы по вашим кредитам. Работает без интернета",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
 
             item { SectionTitle("Порядок погашения", Modifier.padding(start = 4.dp, top = 12.dp)) }
             item { OrderCard(advice) }

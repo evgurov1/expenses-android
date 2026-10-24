@@ -91,6 +91,7 @@ dependencies {
 
     implementation(libs.pdfbox.android)
     implementation(libs.tesseract4android)
+    implementation(libs.mlkit.genai.prompt)
 
     testImplementation(libs.junit)
 }
