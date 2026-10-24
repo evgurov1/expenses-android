@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
+import com.evgurov.expenses.settings.PaydayStore
 import javax.inject.Inject
 
 data class LoanRow(
@@ -48,7 +49,12 @@ class LoansViewModel @Inject constructor(
     loans: LoanRepository,
     private val incomes: IncomeRepository,
     transactions: TransactionRepository,
+    private val paydayStore: PaydayStore,
 ) : ViewModel() {
+
+    val paydays: StateFlow<List<Int>> = paydayStore.paydays
+
+    fun setPaydays(days: List<Int>) = paydayStore.set(days)
 
     val state: StateFlow<LoansUiState> = combine(
         loans.observeAll(),

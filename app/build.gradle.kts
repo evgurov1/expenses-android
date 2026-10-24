@@ -108,6 +108,7 @@ dependencies {
 
     implementation(libs.pdfbox.android)
     implementation(libs.tesseract4android)
+    implementation(libs.androidx.work.runtime)
 
     testImplementation(libs.junit)
 }

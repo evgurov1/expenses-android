@@ -1,5 +1,6 @@
 package com.evgurov.expenses.ui.loans
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.evgurov.expenses.domain.model.Kopecks
@@ -18,12 +19,15 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import javax.inject.Inject
 
 data class LoanForm(
+    /** Не 0 — редактируем существующий кредит. */
+    val id: Long = 0,
     val type: LoanType = LoanType.CONSUMER,
     val name: String = "",
     val bank: String = "",
@@ -61,10 +65,23 @@ data class LoanForm(
 class AddLoanViewModel @Inject constructor(
     private val loans: LoanRepository,
     drafts: ImportDraftHolder,
+    savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val _form = MutableStateFlow(drafts.take()?.let(::formFromImport) ?: LoanForm())
+    private val editId: Long? = savedStateHandle.get<Long>("loanId")
+
+    private val _form = MutableStateFlow(
+        if (editId != null) LoanForm(id = editId) else drafts.take()?.let(::formFromImport) ?: LoanForm(),
+    )
     val form: StateFlow<LoanForm> = _form.asStateFlow()
+
+    init {
+        if (editId != null) {
+            viewModelScope.launch {
+                loans.observe(editId).first()?.let { loan -> _form.value = formFromLoan(loan) }
+            }
+        }
+    }
 
     fun edit(change: (LoanForm) -> LoanForm) = _form.update { change(it).copy(error = null) }
 
@@ -86,6 +103,7 @@ class AddLoanViewModel @Inject constructor(
         if (f.isCard) {
             val limit = Money.parse(f.limitText)?.takeIf { it > 0 } ?: error("Укажите лимит карты")
             Loan(
+                id = f.id,
                 type = f.type,
                 name = name,
                 bank = f.bank.trim(),
@@ -100,6 +118,7 @@ class AddLoanViewModel @Inject constructor(
             val rate = parseRate(f.rateText) ?: error("Укажите ставку, например 18,5")
             val term = f.termText.trim().toIntOrNull()?.takeIf { it in 1..600 } ?: error("Укажите срок в месяцах")
             Loan(
+                id = f.id,
                 type = f.type,
                 name = name,
                 bank = f.bank.trim(),
@@ -122,6 +141,25 @@ class AddLoanViewModel @Inject constructor(
 }
 
 private fun plain(amount: Kopecks): String = Money.format(amount).removeSuffix("\u00A0₽")
+
+/** Форма для правки сохранённого кредита: график банка и досрочные платежи сохраняются как есть. */
+private fun formFromLoan(loan: Loan) = LoanForm(
+    id = loan.id,
+    type = loan.type,
+    name = loan.name,
+    bank = loan.bank,
+    principalText = if (loan.principal > 0) plain(loan.principal) else "",
+    rateText = if (loan.annualRate > 0) formatRate(loan.annualRate).removeSuffix("%") else "",
+    termText = if (loan.termMonths > 0) loan.termMonths.toString() else "",
+    issueDate = loan.issueDate,
+    paymentType = loan.paymentType,
+    paymentText = loan.monthlyPayment?.let(::plain).orEmpty(),
+    limitText = loan.creditLimit?.let(::plain).orEmpty(),
+    balanceText = loan.currentBalance?.let(::plain).orEmpty(),
+    source = loan.source,
+    note = loan.note,
+    importedSchedule = loan.bankSchedule,
+)
 
 private fun formFromImport(draft: ImportDraft): LoanForm {
     val parsed = draft.parsed

@@ -14,6 +14,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -48,6 +49,7 @@ import com.evgurov.expenses.ui.components.shortTitle
 @Composable
 fun LoanDetailsScreen(
     onBack: () -> Unit,
+    onEdit: (Long) -> Unit,
     viewModel: LoanDetailsViewModel = hiltViewModel(),
 ) {
     val details by viewModel.details.collectAsStateWithLifecycle()
@@ -64,6 +66,11 @@ fun LoanDetailsScreen(
                     }
                 },
                 actions = {
+                    details?.loan?.let { loan ->
+                        IconButton(onClick = { onEdit(loan.id) }) {
+                            Icon(Icons.Filled.Edit, contentDescription = "Изменить кредит")
+                        }
+                    }
                     IconButton(onClick = { confirmDelete = true }) {
                         Icon(Icons.Filled.Delete, contentDescription = "Удалить кредит")
                     }

@@ -40,6 +40,8 @@ private object Routes {
     const val PAYOFF = "loans/payoff"
     const val ASSISTANT = "loans/assistant"
     const val LOAN_DETAILS = "loans/{loanId}"
+    const val EDIT_LOAN = "loans/{loanId}/edit"
+    fun editLoan(id: Long) = "loans/$id/edit"
     fun loanDetails(id: Long) = "loans/$id"
     const val TRANSACTIONS = "transactions"
     const val ACCOUNTS = "accounts"
@@ -123,7 +125,16 @@ fun ExpensesNavHost() {
                 Routes.LOAN_DETAILS,
                 arguments = listOf(navArgument("loanId") { type = NavType.LongType }),
             ) {
-                LoanDetailsScreen(onBack = { navController.popBackStack() })
+                LoanDetailsScreen(
+                    onBack = { navController.popBackStack() },
+                    onEdit = { navController.navigate(Routes.editLoan(it)) },
+                )
+            }
+            composable(
+                Routes.EDIT_LOAN,
+                arguments = listOf(navArgument("loanId") { type = NavType.LongType }),
+            ) {
+                AddLoanScreen(onDone = { navController.popBackStack() })
             }
             composable(Routes.TRANSACTIONS) {
                 TransactionsScreen(onAddClick = { navController.navigate(Routes.ADD_TRANSACTION) })

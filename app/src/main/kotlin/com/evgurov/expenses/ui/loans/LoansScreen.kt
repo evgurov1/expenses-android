@@ -72,6 +72,8 @@ fun LoansScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAddIncome by remember { mutableStateOf(false) }
+    var showPaydays by remember { mutableStateOf(false) }
+    val paydays by viewModel.paydays.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -152,6 +154,22 @@ fun LoansScreen(
                     }
                 }
             }
+            item {
+                AppCard(onClick = { showPaydays = true }) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Дни зарплаты", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                if (paydays.isEmpty()) "Укажите — напомню, сколько отложить на кредиты"
+                                else "${paydays.joinToString(" и ")} числа · в эти дни напомню, сколько отложить",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        Text("Изменить", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.tertiary)
+                    }
+                }
+            }
 
             item { SectionTitle("Мои кредиты", Modifier.padding(top = 12.dp, start = 4.dp)) }
             if (!state.loading && state.loans.isEmpty()) {
@@ -170,6 +188,17 @@ fun LoansScreen(
                 LoanCard(row, onClick = { onOpenLoan(row.loan.id) })
             }
         }
+    }
+
+    if (showPaydays) {
+        PaydaysDialog(
+            initial = paydays,
+            onConfirm = {
+                viewModel.setPaydays(it)
+                showPaydays = false
+            },
+            onDismiss = { showPaydays = false },
+        )
     }
 
     if (showAddIncome) {
@@ -375,6 +404,41 @@ private fun AddIncomeDialog(
                 enabled = amount != null,
             ) { Text("Добавить") }
         },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
+    )
+}
+
+@Composable
+private fun PaydaysDialog(
+    initial: List<Int>,
+    onConfirm: (List<Int>) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by remember { mutableStateOf(initial.joinToString(", ")) }
+    val days = Regex("""\d{1,2}""").findAll(text).mapNotNull { it.value.toIntOrNull() }.filter { it in 1..31 }.toList()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Дни зарплаты") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Числа месяца, когда приходят зарплата и аванс. В эти дни придёт напоминание, сколько отложить на кредиты.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    colors = appFieldColors(),
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("Например: 5, 20") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(days) }) { Text("Сохранить") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
     )
 }

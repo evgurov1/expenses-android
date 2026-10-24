@@ -67,7 +67,15 @@ fun AddLoanScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (form.importNote != null) "Проверьте кредит" else "Новый кредит") },
+                title = {
+                    Text(
+                        when {
+                            form.id != 0L -> "Изменить кредит"
+                            form.importNote != null -> "Проверьте кредит"
+                            else -> "Новый кредит"
+                        },
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onDone) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
@@ -85,7 +93,13 @@ fun AddLoanScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            form.importNote?.let { note ->
+            val note = form.importNote ?: if (form.id != 0L && form.importedSchedule.isNotEmpty()) {
+                "График платежей из документа и досрочные платежи сохранятся. " +
+                    "Если изменились условия, загрузите новый график банка."
+            } else {
+                null
+            }
+            note?.let { note ->
                 Card(
                     shape = MaterialTheme.shapes.medium,
                     colors = CardDefaults.cardColors(

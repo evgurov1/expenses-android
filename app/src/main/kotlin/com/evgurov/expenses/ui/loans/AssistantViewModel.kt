@@ -1,6 +1,5 @@
 package com.evgurov.expenses.ui.loans
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.evgurov.expenses.assistant.AssistantAvailability
@@ -15,7 +14,7 @@ import com.evgurov.expenses.domain.repository.LoanRepository
 import com.evgurov.expenses.domain.repository.TransactionRepository
 import com.evgurov.expenses.domain.usecase.monthlyIncome
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
+import com.evgurov.expenses.settings.PaydayStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,13 +48,12 @@ class AssistantViewModel @Inject constructor(
     private val loans: LoanRepository,
     private val incomes: IncomeRepository,
     private val transactions: TransactionRepository,
-    @ApplicationContext context: Context,
+    private val paydayStore: PaydayStore,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(AssistantUiState())
     val state: StateFlow<AssistantUiState> = _state.asStateFlow()
 
-    private val prefs = context.getSharedPreferences("assistant", Context.MODE_PRIVATE)
 
     /** Переписка для модели: вопросы, ответы, вызовы инструментов и их результаты. */
     private val history = mutableListOf<AgentMessage>()
@@ -156,7 +154,7 @@ class AssistantViewModel @Inject constructor(
             }
             replaceLast("", pending = true, status = statusFor(call.name))
             val result = tools.execute(call)
-            result.paydays?.let { prefs.edit().putString(KEY_PAYDAYS, it.joinToString(",")).apply() }
+            result.paydays?.let(paydayStore::set)
             turn += AgentMessage(Role.ASSISTANT, raw)
             // В память модели кладём только начало длинного результата: целый график на год её переполняет.
             turn += AgentMessage(Role.TOOL, compact(result.text))
@@ -197,8 +195,7 @@ class AssistantViewModel @Inject constructor(
         val today = LocalDate.now()
         val loanList = loans.observeAll().first()
         val income = monthlyIncome(incomes.observeAll().first(), transactions.observeAll().first(), YearMonth.from(today)).amount
-        val paydays = prefs.getString(KEY_PAYDAYS, null).orEmpty().split(",").mapNotNull { it.trim().toIntOrNull() }
-        return LoanTools(loanList, income, paydays, today)
+        return LoanTools(loanList, income, paydayStore.paydays.value, today)
     }
 
     private fun statusFor(tool: String) = when (tool) {
@@ -214,7 +211,6 @@ class AssistantViewModel @Inject constructor(
     }
 
     private companion object {
-        const val KEY_PAYDAYS = "paydays"
         const val MAX_STEPS = 4
         const val HISTORY = 12
         const val TOOL_MEMORY = 1200

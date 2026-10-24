@@ -148,7 +148,8 @@ object PaydaySchedule {
 
     private fun dayIn(month: YearMonth, day: Int): LocalDate = month.atDay(minOf(day, month.lengthOfMonth()))
 
-    private fun latestPayday(days: List<Int>, due: LocalDate): LocalDate {
+    /** Последний день зарплаты не позже даты списания — с этой зарплаты и платим. */
+    fun latestPayday(days: List<Int>, due: LocalDate): LocalDate {
         var month = YearMonth.from(due)
         repeat(3) {
             days.map { dayIn(month, it) }.filter { !it.isAfter(due) }.maxOrNull()?.let { return it }

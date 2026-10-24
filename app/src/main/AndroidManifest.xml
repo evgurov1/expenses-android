@@ -3,6 +3,8 @@
 
     <!-- Только для одной загрузки файла модели помощника. Данные пользователя никуда не отправляются. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Напоминания о платежах по кредитам. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".ExpensesApplication"
