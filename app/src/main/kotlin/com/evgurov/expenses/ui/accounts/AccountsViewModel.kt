@@ -8,6 +8,9 @@ import com.evgurov.expenses.domain.model.Kopecks
 import com.evgurov.expenses.domain.repository.AccountRepository
 import com.evgurov.expenses.domain.repository.TransactionRepository
 import com.evgurov.expenses.domain.usecase.accountBalances
+import com.evgurov.expenses.domain.usecase.withBalanceNow
+import kotlinx.coroutines.flow.first
+import java.time.LocalDate
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +30,7 @@ data class AccountsUiState(
 @HiltViewModel
 class AccountsViewModel @Inject constructor(
     private val accounts: AccountRepository,
-    transactions: TransactionRepository,
+    private val transactions: TransactionRepository,
 ) : ViewModel() {
 
     val state: StateFlow<AccountsUiState> = combine(
@@ -41,6 +44,14 @@ class AccountsViewModel @Inject constructor(
     fun add(name: String, type: AccountType, initialBalance: Kopecks) {
         viewModelScope.launch {
             accounts.upsert(Account(name = name.trim(), type = type, initialBalance = initialBalance))
+        }
+    }
+
+    /** Остаток «сейчас», введённый пользователем. */
+    fun setBalance(account: Account, amount: Kopecks) {
+        viewModelScope.launch {
+            val today = LocalDate.now()
+            accounts.upsert(account.withBalanceNow(amount, today, transactions.observeBetween(today, today).first()))
         }
     }
 

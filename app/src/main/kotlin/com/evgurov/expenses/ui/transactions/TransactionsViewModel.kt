@@ -16,6 +16,13 @@ import com.evgurov.expenses.domain.repository.CategoryRepository
 import com.evgurov.expenses.domain.repository.TransactionRepository
 import com.evgurov.expenses.domain.usecase.PeriodSummary
 import com.evgurov.expenses.domain.usecase.summarize
+import com.evgurov.expenses.domain.usecase.SpendingForecast
+import com.evgurov.expenses.domain.usecase.accountBalances
+import com.evgurov.expenses.domain.usecase.forecastMonthSpending
+import com.evgurov.expenses.domain.usecase.withBalanceNow
+import com.evgurov.expenses.domain.model.Account
+import com.evgurov.expenses.ui.accounts.AccountWithBalance
+import kotlinx.coroutines.flow.first
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -82,6 +89,14 @@ data class TransactionsUiState(
     val selected: CategorySlice? = null,
 )
 
+/** Сколько денег сейчас и прогноз трат на текущий месяц — не зависят от выбранного периода. */
+data class MoneyOverview(
+    val accounts: List<AccountWithBalance> = emptyList(),
+    val forecast: SpendingForecast? = null,
+) {
+    val total: Long get() = accounts.sumOf { it.balance }
+}
+
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class TransactionsViewModel @Inject constructor(
@@ -89,8 +104,34 @@ class TransactionsViewModel @Inject constructor(
     private val importer: BankImporter,
     private val extractor: LoanTextExtractor,
     categories: CategoryRepository,
-    accounts: AccountRepository,
+    private val accounts: AccountRepository,
 ) : ViewModel() {
+
+
+    val overview: StateFlow<MoneyOverview> = combine(
+        accounts.observeAll(),
+        transactions.observeAll(),
+        categories.observeAll(),
+    ) { accs, list, cats ->
+        val balances = accountBalances(accs, list)
+        val today = LocalDate.now()
+        val loanCategories = cats.filter { it.name == LOAN_PAYMENTS }.map { it.id }.toSet()
+        MoneyOverview(
+            accounts = accs
+                // Пустой счёт без операций и без остатка (например, «Наличные» по умолчанию) не показываем.
+                .filter { acc -> acc.knownBalance != null || acc.initialBalance != 0L || list.any { it.accountId == acc.id } }
+                .map { AccountWithBalance(it, balances[it.id] ?: it.initialBalance) },
+            forecast = forecastMonthSpending(list, YearMonth.from(today), today, loanCategories),
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MoneyOverview())
+
+    /** Остаток «сейчас», введённый пользователем. */
+    fun setBalance(account: Account, amount: Long) {
+        viewModelScope.launch {
+            val today = LocalDate.now()
+            accounts.upsert(account.withBalanceNow(amount, today, transactions.observeBetween(today, today).first()))
+        }
+    }
 
     private val period = MutableStateFlow(Period(PeriodMode.MONTH, LocalDate.now()))
     private val chartKind = MutableStateFlow(TransactionKind.EXPENSE)
@@ -180,6 +221,9 @@ class TransactionsViewModel @Inject constructor(
 }
 
 private val DAY = DateTimeFormatter.ofPattern("dd.MM.yy")
+
+/** Категория платежей по кредитам: идут по графику, в средние траты в день не входят. */
+private const val LOAN_PAYMENTS = "Платежи по кредитам"
 
 /** Сколько категорий показываем отдельно; остальные идут в «Остальное». */
 const val MAX_SLICES = 6

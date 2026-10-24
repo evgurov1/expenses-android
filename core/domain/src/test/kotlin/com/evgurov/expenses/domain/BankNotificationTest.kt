@@ -64,6 +64,15 @@ class BankNotificationTest {
     }
 
     @Test
+    fun `reads balance after operation`() {
+        assertEquals(12_345_00L, BankNotificationParser.balance("Покупка", "Покупка, карта *1234. 450,50 ₽. PYATEROCHKA 1234. Доступно 12 345 ₽"))
+        assertEquals(5_432_10L, BankNotificationParser.balance("СберБанк", "MIR-1234 14:05 Покупка 1 299р KFC Баланс: 5 432.10р"))
+        assertNull(BankNotificationParser.balance("ВТБ", "Погашение кредита 11 149,08 ₽. Остаток задолженности 243 594,39 ₽"))
+        assertNull(BankNotificationParser.balance("Т-Банк", "Покупка 700 ₽. Доступный лимит 50 000 ₽"))
+        assertNull(BankNotificationParser.balance("Яндекс Банк", "−2 490 ₽ Wildberries"))
+    }
+
+    @Test
     fun `remembers user choice for a merchant`() {
         val op = parse(tbank, "Покупка", "Покупка, карта *1234. 700 ₽. IP IVANOV 77. Доступно 1 000 ₽")!!
         assertEquals("Прочее", CategoryGuesser.guess(op))

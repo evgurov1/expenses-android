@@ -49,6 +49,8 @@ import com.evgurov.expenses.ui.components.ConfirmDeleteDialog
 import com.evgurov.expenses.ui.components.SignedAmount
 import com.evgurov.expenses.ui.components.dayTitle
 import com.evgurov.expenses.ui.components.PillChip
+import com.evgurov.expenses.ui.accounts.AccountWithBalance
+import com.evgurov.expenses.ui.accounts.BalanceDialog
 import com.evgurov.expenses.ui.components.RussianLocale
 import com.evgurov.expenses.ui.components.title
 import java.time.YearMonth
@@ -64,6 +66,8 @@ fun TransactionsScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val skipped by viewModel.skipped.collectAsStateWithLifecycle()
     val statementStatus by viewModel.statementStatus.collectAsStateWithLifecycle()
+    val overview by viewModel.overview.collectAsStateWithLifecycle()
+    var editingBalance by remember { mutableStateOf<AccountWithBalance?>(null) }
     val pickStatement = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let(viewModel::importStatement)
     }
@@ -103,10 +107,11 @@ fun TransactionsScreen(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(bottom = 88.dp),
         ) {
+            item { MoneyNowCard(overview, onAccount = { editingBalance = it }) }
             item {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
                 ) {
                     PeriodMode.entries.forEach { mode ->
                         PillChip(state.period.mode == mode, { viewModel.setPeriodMode(mode) }, mode.label)
@@ -179,6 +184,18 @@ fun TransactionsScreen(
                 toDelete = transaction
             },
             onDismiss = { selected = null },
+        )
+    }
+
+    editingBalance?.let { item ->
+        BalanceDialog(
+            account = item.account,
+            current = item.balance,
+            onSave = {
+                viewModel.setBalance(item.account, it)
+                editingBalance = null
+            },
+            onDismiss = { editingBalance = null },
         )
     }
 

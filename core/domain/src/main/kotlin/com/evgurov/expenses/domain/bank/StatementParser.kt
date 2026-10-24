@@ -1,5 +1,6 @@
 package com.evgurov.expenses.domain.bank
 
+import com.evgurov.expenses.domain.model.Kopecks
 import com.evgurov.expenses.domain.model.TransactionKind
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -14,7 +15,15 @@ data class StatementRow(
     val description: String,
 )
 
-data class Statement(val bank: Bank, val rows: List<StatementRow>)
+/** Остаток на конец дня [date] по данным банка. */
+data class KnownBalance(val date: LocalDate, val amount: Kopecks)
+
+data class Statement(
+    val bank: Bank,
+    val rows: List<StatementRow>,
+    /** Остаток на конец периода выписки, если банк его указал. */
+    val closingBalance: KnownBalance? = null,
+)
 
 /**
  * Выписка по карте Т-Банка из PDF: «17.09.26 06:12 18.09.26 Оплата в VKUSVILL Moskva RUS 1 425.00 ₽ 1 425.00 ₽».
@@ -29,6 +38,9 @@ object StatementParser {
 
     /** Выписка по договору: сумма в конце строки, поступления со знаком «+». */
     private val contractRow = Regex("""^(\d{2}\.\d{2}\.\d{2})(?: (\d{2}:\d{2}))? \d{2}\.\d{2}\.\d{2} (.+?) $AMOUNT $AMOUNT$""")
+
+    /** «Баланс на 17.10.26 18 371.02 ₽» — в начале выписки дважды: на начало и на конец периода. */
+    private val balanceLine = Regex("""^Баланс на (\d{2}\.\d{2}\.\d{2}) (-)? ?(\d{1,3}(?: \d{3})*[.,]\d{2}) ?₽""")
 
     private val stopWords = listOf(
         "дата и время", "операции обработки", "операции списания", "описание", "операции по карте", "расходы:",
@@ -71,7 +83,14 @@ object StatementParser {
             }
         }
         flush()
-        return if (rows.isEmpty()) null else Statement(TBANK, rows)
+        val closing = lines.mapNotNull { balanceLine.find(it) }
+            .map { m ->
+                val (date, minus, amount) = m.destructured
+                val value = amount.replace(" ", "").replace(',', '.').toBigDecimal().movePointRight(2).toLong()
+                KnownBalance(LocalDate.parse(date, shortDate), if (minus.isEmpty()) value else -value)
+            }
+            .maxByOrNull { it.date }
+        return if (rows.isEmpty()) null else Statement(TBANK, rows, closing)
     }
 
     private fun toRow(draft: Draft): StatementRow? {

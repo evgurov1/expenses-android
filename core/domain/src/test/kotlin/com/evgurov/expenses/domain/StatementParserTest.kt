@@ -1,6 +1,7 @@
 package com.evgurov.expenses.domain
 
 import com.evgurov.expenses.domain.bank.CategoryGuesser
+import com.evgurov.expenses.domain.bank.KnownBalance
 import com.evgurov.expenses.domain.bank.StatementParser
 import com.evgurov.expenses.domain.model.TransactionKind
 import org.junit.Assert.assertEquals
@@ -15,6 +16,7 @@ class StatementParserTest {
         ИВАНОВ ИВАН ИВАНОВИЧ
         Выписка по договору №1234567890
         Баланс на 18.09.26 36 913.36 ₽
+        Баланс на 17.10.26 18 371.02 ₽
         •     Поступления 150 000.00 ₽
         Операции по карте № 220070******0000 ИВАНОВ ИВАН
         Расходы: 77 000.00 ₽
@@ -41,6 +43,7 @@ class StatementParserTest {
     @Test
     fun `reads tbank statement rows with categories`() {
         val rows = StatementParser.parse(text)!!.rows
+        assertEquals(KnownBalance(LocalDate.of(2026, 10, 17), 18_371_02L), StatementParser.parse(text)!!.closingBalance)
         // Внутренний перевод на свой договор пропущен.
         assertEquals(8, rows.size)
         val coffee = rows[0]

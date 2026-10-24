@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LoanPaymentEntity::class,
         MerchantRuleEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -62,6 +62,14 @@ abstract class ExpensesDatabase : RoomDatabase() {
 
     companion object {
         const val NAME = "expenses.db"
+
+        /** v8: остаток счёта на дату — из уведомления банка, выписки или введённый вручную. */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `accounts` ADD COLUMN `knownBalance` INTEGER")
+                db.execSQL("ALTER TABLE `accounts` ADD COLUMN `knownBalanceDate` INTEGER")
+            }
+        }
 
         /** v7: переводы между своими счетами из выписки — не траты и не доходы, убираем. */
         val MIGRATION_6_7 = object : Migration(6, 7) {

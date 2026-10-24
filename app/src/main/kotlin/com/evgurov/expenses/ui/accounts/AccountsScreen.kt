@@ -50,6 +50,7 @@ fun AccountsScreen(viewModel: AccountsViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var showAdd by remember { mutableStateOf(false) }
     var toDelete by remember { mutableStateOf<Account?>(null) }
+    var editing by remember { mutableStateOf<AccountWithBalance?>(null) }
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Счета") }) },
@@ -74,7 +75,7 @@ fun AccountsScreen(viewModel: AccountsViewModel = hiltViewModel()) {
                     headlineContent = { Text(item.account.name) },
                     supportingContent = { Text(item.account.type.label) },
                     trailingContent = { Text(Money.format(item.balance)) },
-                    modifier = Modifier.clickable { toDelete = item.account },
+                    modifier = Modifier.clickable { editing = item },
                 )
                 HorizontalDivider()
             }
@@ -88,6 +89,22 @@ fun AccountsScreen(viewModel: AccountsViewModel = hiltViewModel()) {
                 showAdd = false
             },
             onDismiss = { showAdd = false },
+        )
+    }
+
+    editing?.let { item ->
+        BalanceDialog(
+            account = item.account,
+            current = item.balance,
+            onSave = {
+                viewModel.setBalance(item.account, it)
+                editing = null
+            },
+            onDismiss = { editing = null },
+            onDelete = {
+                editing = null
+                toDelete = item.account
+            },
         )
     }
 

@@ -18,6 +18,8 @@ data class AccountEntity(
     val type: AccountType,
     val currency: String,
     val initialBalance: Long,
+    val knownBalance: Long? = null,
+    val knownBalanceDate: LocalDate? = null,
 )
 
 @Entity(
@@ -75,8 +77,8 @@ data class MerchantRuleEntity(
     val categoryId: Long,
 )
 
-fun AccountEntity.toDomain() = Account(id, name, type, currency, initialBalance)
-fun Account.toEntity() = AccountEntity(id, name, type, currency, initialBalance)
+fun AccountEntity.toDomain() = Account(id, name, type, currency, initialBalance, knownBalance, knownBalanceDate)
+fun Account.toEntity() = AccountEntity(id, name, type, currency, initialBalance, knownBalance, knownBalanceDate)
 
 fun CategoryEntity.toDomain() = Category(id, name, kind, parentId)
 fun Category.toEntity() = CategoryEntity(id, name, kind, parentId)

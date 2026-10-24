@@ -15,6 +15,9 @@ data class Account(
     val type: AccountType,
     val currency: String = "RUB",
     val initialBalance: Kopecks = 0,
+    /** Остаток, который сообщил банк или ввёл пользователь, — на конец дня [knownBalanceDate]. */
+    val knownBalance: Kopecks? = null,
+    val knownBalanceDate: LocalDate? = null,
 )
 
 data class Category(

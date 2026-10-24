@@ -8,11 +8,13 @@ import com.evgurov.expenses.domain.bank.Statement
 import com.evgurov.expenses.domain.model.Account
 import com.evgurov.expenses.domain.model.AccountType
 import com.evgurov.expenses.domain.model.Category
+import com.evgurov.expenses.domain.model.Kopecks
 import com.evgurov.expenses.domain.model.Transaction
 import com.evgurov.expenses.domain.model.TransactionKind
 import com.evgurov.expenses.domain.repository.AccountRepository
 import com.evgurov.expenses.domain.repository.CategoryRepository
 import com.evgurov.expenses.domain.repository.TransactionRepository
+import com.evgurov.expenses.domain.usecase.withBalanceNow
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -61,6 +63,7 @@ class BankImporter @Inject constructor(
         }
 
         val account = accountId(bank.accountName)
+        val balance = BankNotificationParser.balance(title, text)
         transactions.insertIfNew(
             Transaction(
                 accountId = account,
@@ -73,6 +76,8 @@ class BankImporter @Inject constructor(
                 externalId = "$packageName:$date:${(title + "|" + text).hashCode()}",
             ),
         )
+        // Остаток в уведомлении — уже после этой операции.
+        if (balance != null) setBalanceNow(account, balance, date)
     }
 
     /**
@@ -113,7 +118,24 @@ class BankImporter @Inject constructor(
             )
             if (inserted) added++ else duplicates++
         }
+        // Остаток из выписки берём, только если более свежего (из уведомления или введённого вручную) нет.
+        statement.closingBalance?.let { closing ->
+            val current = accounts.observeAll().first().firstOrNull { it.id == account }?.knownBalanceDate
+            if (current == null || current < closing.date) setKnownBalance(account, closing.amount, closing.date)
+        }
         StatementImport(added, duplicates, from, to)
+    }
+
+    private suspend fun setKnownBalance(accountId: Long, amount: Kopecks, date: LocalDate) {
+        val account = accounts.observeAll().first().firstOrNull { it.id == accountId } ?: return
+        accounts.upsert(account.copy(knownBalance = amount, knownBalanceDate = date))
+    }
+
+    /** Остаток, который банк сообщил прямо сейчас (в день [date]). */
+    suspend fun setBalanceNow(accountId: Long, amount: Kopecks, date: LocalDate) {
+        val account = accounts.observeAll().first().firstOrNull { it.id == accountId } ?: return
+        val today = transactions.observeBetween(date, date).first()
+        accounts.upsert(account.withBalanceNow(amount, date, today))
     }
 
     private suspend fun accountId(name: String): Long =

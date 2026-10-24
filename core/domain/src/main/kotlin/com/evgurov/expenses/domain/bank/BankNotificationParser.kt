@@ -68,6 +68,26 @@ object BankNotificationParser {
         "на свой счет", "на свой счёт", "со своего счета", "со своего счёта",
     )
 
+    /** Слова перед остатком на счёте. Лимит и долг по кредитке — не свои деньги, их не берём. */
+    private val ownBalanceWords = Regex("""(баланс|доступно|остаток|на сч[её]те)[^.\d]{0,12}$""", RegexOption.IGNORE_CASE)
+    private val notOwnMoney = Regex("""лимит|задолж|кредит|долг""", RegexOption.IGNORE_CASE)
+
+    /** Остаток на счёте после операции: «Доступно 12 345 ₽», «Баланс: 5 432.10р». Null — если банк его не написал. */
+    fun balance(title: String, text: String): Kopecks? {
+        val full = "$title. $text".replace('\n', ' ').trim()
+        val match = money.findAll(full).firstOrNull { m ->
+            val before = full.substring(0, m.range.first).takeLast(30)
+            ownBalanceWords.containsMatchIn(before) && !notOwnMoney.containsMatchIn(before)
+        } ?: return null
+        val amount = kopecks(match) ?: return null
+        return if (match.groupValues[1].isNotEmpty() && match.groupValues[1] != "+") -amount else amount
+    }
+
+    private fun kopecks(match: MatchResult): Kopecks? {
+        val rubles = match.groupValues[2].filter(Char::isDigit).toLongOrNull() ?: return null
+        return rubles * 100 + match.groupValues[3].padEnd(2, '0').toLong()
+    }
+
     /** Перевод между своими счетами: это не трата и не доход, такие операции не учитываем. */
     fun isOwnTransfer(text: String): Boolean = text.lowercase().let { lower -> ownTransferWords.any { it in lower } }
 
@@ -78,9 +98,7 @@ object BankNotificationParser {
         if (skipWords.any { it in lower } || isOwnTransfer(lower)) return null
 
         val match = money.findAll(full).firstOrNull { m -> !balanceWords.containsMatchIn(full.substring(0, m.range.first)) } ?: return null
-        val rubles = match.groupValues[2].filter(Char::isDigit).toLongOrNull() ?: return null
-        val kopecks = match.groupValues[3].padEnd(2, '0').ifEmpty { "00" }.toLong()
-        val amount = rubles * 100 + kopecks
+        val amount = kopecks(match) ?: return null
         if (amount <= 0) return null
 
         val sign = match.groupValues[1]
