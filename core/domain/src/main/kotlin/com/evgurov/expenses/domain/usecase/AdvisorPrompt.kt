@@ -17,6 +17,7 @@ object AdvisorPrompt {
 
     private const val RULES =
         "Ты — помощник по кредитам в мобильном приложении. Отвечай по-русски, коротко: 2–4 предложения, без таблиц и списков. " +
+            "Отвечай именно на заданный вопрос. Не пересказывай весь план, если о нём не спросили. " +
             "Используй только цифры и даты из раздела «Факты». Не придумывай суммы, ставки и даты и ничего не пересчитывай сам. " +
             "Если в фактах нет ответа, так и скажи и предложи изменить доплату на экране «Как закрыть быстрее». " +
             "Не советуй брать новые кредиты и займы, кроме рефинансирования под меньшую ставку. " +
@@ -31,6 +32,13 @@ object AdvisorPrompt {
         val thousands = match.value.contains("тыс") || match.value.trimEnd().endsWith("к")
         val amount = if (thousands) base * 1000 else base
         return amount.takeIf { it in 100_00..100_000_000_00 }
+    }
+
+    /** Просьба расписать платежи по датам — на неё отвечаем готовым графиком, без модели. */
+    fun asksForSchedule(question: String): Boolean {
+        val lower = question.lowercase()
+        return lower.contains("график") || lower.contains("расписан") ||
+            (lower.contains("зарплат") && lower.contains("числ"))
     }
 
     fun facts(
@@ -48,26 +56,31 @@ object AdvisorPrompt {
         if (income > 0) {
             appendLine("Обязательные платежи в этом месяце: ${Money.format(payments)}, ПДН ${"%.0f".format(payments * 100.0 / income)}%.")
         }
+        val label = LoanLabels.of(loans, today)
         appendLine("Кредиты:")
         val active = loans.filter { LoanMath.balanceOn(it, today) > 0 }
         for (loan in active) {
             val close = advice.baseline.loans.firstOrNull { it.loan == loan }?.closeMonth
-            append("- «${loan.name}»")
+            val planned = advice.plan.loans.firstOrNull { it.loan == loan }?.closeMonth
+            append("- ${label.getValue(loan)}")
             if (loan.bank.isNotBlank()) append(", ${loan.bank}")
             append(": остаток ${Money.format(LoanMath.balanceOn(loan, today))}")
             if (loan.annualRate > 0) append(", ставка ${"%.1f".format(loan.annualRate)}%")
             append(", платёж ${Money.format(LoanMath.regularPayment(loan))} в месяц")
-            close?.let { append(", без досрочек закроется ${monthText(it)}") }
+            close?.let { append(", без доплат закроется ${monthText(it)}") }
+            if (extraMonthly > 0 && planned != null && planned != close) {
+                append(", с доплатой ${Money.format(extraMonthly)} в месяц — ${monthText(planned)}")
+            }
             appendLine(".")
         }
         appendLine(
             "Без досрочных платежей: переплата по процентам ${Money.format(advice.baseline.totalInterest)}, " +
                 "все кредиты закроются ${advice.baseline.debtFreeMonth?.let(::monthText) ?: "нескоро"}.",
         )
-        describePlan(advice, extraMonthly)
-        whatIf?.let { (extra, other) -> describePlan(other, extra) }
+        describePlan(advice, extraMonthly, label)
+        whatIf?.let { (extra, other) -> describePlan(other, extra, label) }
         if (advice.order.size > 1) {
-            appendLine("Порядок досрочного погашения: " + advice.order.joinToString(", ") { "«${it.name}»" } + ".")
+            appendLine("Порядок досрочного погашения: " + advice.order.joinToString(", ") { label.getValue(it) } + ".")
         }
         if (advice.tips.isNotEmpty()) {
             appendLine("Советы приложения:")
@@ -75,26 +88,32 @@ object AdvisorPrompt {
         }
     }.trim()
 
-    private fun StringBuilder.describePlan(advice: PayoffAdvice, extra: Kopecks) {
+    private fun StringBuilder.describePlan(advice: PayoffAdvice, extra: Kopecks, label: Map<Loan, String>) {
         if (extra <= 0) return
         append("Если доплачивать ${Money.format(extra)} в месяц: ")
         append("экономия на процентах ${Money.format(advice.savedInterest)}, ")
-        append("все кредиты закроются ${advice.plan.debtFreeMonth?.let(::monthText) ?: "нескоро"}")
-        if (advice.monthsEarlier > 0) append(" (на ${advice.monthsEarlier} мес. раньше)")
-        val closes = advice.plan.loans.mapNotNull { p -> p.closeMonth?.let { "«${p.loan.name}» — ${monthText(it)}" } }
+        append("последний из всех кредитов закроется ${advice.plan.debtFreeMonth?.let(::monthText) ?: "нескоро"}")
+        if (advice.monthsEarlier > 0) append(" (на ${advice.monthsEarlier} мес. раньше, чем без доплат)")
+        val closes = advice.plan.loans.mapNotNull { p ->
+            p.closeMonth?.let { "${label[p.loan] ?: "«${p.loan.name}»"} — ${monthText(it)}" }
+        }
         if (closes.isNotEmpty()) append("; закрытие: ${closes.joinToString(", ")}")
         appendLine(".")
     }
 
+    /**
+     * Прошлые ответы модели в запрос не кладём: маленькая модель начинает их повторять.
+     * Передаём только прошлые вопросы — чтобы понимать уточнения вроде «а если 20к?».
+     */
     fun build(facts: String, history: List<ChatTurn>, question: String): String = buildString {
         appendLine(RULES)
         appendLine()
         appendLine("Факты:")
         appendLine(facts)
-        for (turn in history.takeLast(3)) {
+        val previous = history.takeLast(3).map { it.question }
+        if (previous.isNotEmpty()) {
             appendLine()
-            appendLine("Вопрос: ${turn.question}")
-            appendLine("Ответ: ${turn.answer}")
+            appendLine("Раньше пользователь спрашивал: " + previous.joinToString("; ") { "«$it»" } + ".")
         }
         appendLine()
         appendLine("Вопрос: $question")

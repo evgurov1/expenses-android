@@ -1,5 +1,6 @@
 package com.evgurov.expenses.ui.loans
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.evgurov.expenses.assistant.AssistantAvailability
@@ -11,9 +12,11 @@ import com.evgurov.expenses.domain.repository.LoanRepository
 import com.evgurov.expenses.domain.repository.TransactionRepository
 import com.evgurov.expenses.domain.usecase.AdvisorPrompt
 import com.evgurov.expenses.domain.usecase.ChatTurn
+import com.evgurov.expenses.domain.usecase.PaydaySchedule
 import com.evgurov.expenses.domain.usecase.PayoffPlanner
 import com.evgurov.expenses.domain.usecase.monthlyIncome
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,7 +45,10 @@ class AssistantViewModel @Inject constructor(
     private val loans: LoanRepository,
     private val incomes: IncomeRepository,
     private val transactions: TransactionRepository,
+    @ApplicationContext context: Context,
 ) : ViewModel() {
+
+    private val prefs = context.getSharedPreferences("assistant", Context.MODE_PRIVATE)
 
     private val _state = MutableStateFlow(AssistantUiState())
     val state: StateFlow<AssistantUiState> = _state.asStateFlow()
@@ -89,6 +95,13 @@ class AssistantViewModel @Inject constructor(
             )
         }
         job = viewModelScope.launch {
+            if (AdvisorPrompt.asksForSchedule(q)) {
+                // График считаем сами: модель путает даты и суммы, а здесь нужна точность до рубля.
+                val text = runCatching { scheduleAnswer(q) }.getOrElse { e -> "Не получилось составить график: ${e.message}" }
+                history += ChatTurn(q, text)
+                finish(text)
+                return@launch
+            }
             val prompt = runCatching { buildPrompt(q) }.getOrElse { e ->
                 finish("Не получилось собрать данные по кредитам: ${e.message}")
                 return@launch
@@ -111,6 +124,23 @@ class AssistantViewModel @Inject constructor(
         }
     }
 
+    private suspend fun scheduleAnswer(question: String): String {
+        PaydaySchedule.paydaysFromText(question).takeIf { it.isNotEmpty() }?.let { days ->
+            prefs.edit().putString(PAYDAYS, days.joinToString(",")).apply()
+        }
+        val paydays = prefs.getString(PAYDAYS, null).orEmpty().split(",").mapNotNull { it.trim().toIntOrNull() }
+        if (paydays.isEmpty()) {
+            return "Напишите, в какие числа приходит зарплата, например: «график, зарплата 5 и 20 числа». Запомню и распишу платежи."
+        }
+        val today = LocalDate.now()
+        val loanList = loans.observeAll().first()
+        val extra = AdvisorPrompt.extraFromQuestion(question) ?: extraMonthly
+        val advice = PayoffPlanner.advise(loanList, extra, today = today)
+        val schedule = PaydaySchedule.build(advice.plan, paydays, today)
+        if (schedule.isEmpty()) return "Нет действующих кредитов — расписывать нечего."
+        return PaydaySchedule.describe(schedule, paydays, loanList, extra, advice.order.firstOrNull(), today)
+    }
+
     private suspend fun buildPrompt(question: String): String {
         val today = LocalDate.now()
         val loanList = loans.observeAll().first()
@@ -121,6 +151,10 @@ class AssistantViewModel @Inject constructor(
             ?.let { it to PayoffPlanner.advise(loanList, it, income = income, today = today) }
         val facts = AdvisorPrompt.facts(loanList, advice, extraMonthly, income, today, whatIf)
         return AdvisorPrompt.build(facts, history, question)
+    }
+
+    private companion object {
+        const val PAYDAYS = "paydays"
     }
 
     private fun replaceLast(text: String, pending: Boolean) = _state.update {

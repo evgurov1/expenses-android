@@ -24,6 +24,14 @@ data class LoanPayoff(
     val interest: Kopecks,
 )
 
+/** Платёж по кредиту в месяце плана: обязательный по графику или досрочный. */
+data class PlannedPayment(
+    val month: YearMonth,
+    val loan: Loan,
+    val amount: Kopecks,
+    val early: Boolean,
+)
+
 data class PayoffPlan(
     val loans: List<LoanPayoff>,
     val totalInterest: Kopecks,
@@ -31,6 +39,8 @@ data class PayoffPlan(
     val debtFreeMonth: YearMonth?,
     /** Обязательные платежи по месяцам — для прогноза ПДН. */
     val mandatoryByMonth: List<Pair<YearMonth, Kopecks>>,
+    /** Все платежи плана по месяцам — для графика по дням зарплаты. */
+    val payments: List<PlannedPayment> = emptyList(),
 )
 
 data class PayoffAdvice(
@@ -97,6 +107,7 @@ object PayoffPlanner {
         val states = loans.map { State(it, today) }.filter { it.balance > 0 }
         val start = YearMonth.from(today).plusMonths(1)
         val mandatory = mutableListOf<Pair<YearMonth, Kopecks>>()
+        val payments = mutableListOf<PlannedPayment>()
         var released = 0L
         var month = start
         var step = 0
@@ -111,6 +122,7 @@ object PayoffPlanner {
                 // Как в банковском графике: копеечный хвост от округлений уходит в последний платёж.
                 if (s.balance - pay in 1 until s.regular / 10) pay = s.balance
                 due += pay
+                if (pay > 0) payments += PlannedPayment(month, s.loan, pay, early = false)
                 s.balance -= pay
                 if (s.balance == 0L) s.close(month)
             }
@@ -119,6 +131,7 @@ object PayoffPlanner {
             for (s in ordered(states, strategy)) {
                 if (pool <= 0) break
                 val pay = minOf(pool, s.balance)
+                if (pay > 0) payments += PlannedPayment(month, s.loan, pay, early = true)
                 s.balance -= pay
                 pool -= pay
                 if (s.balance == 0L) s.close(month)
@@ -133,6 +146,7 @@ object PayoffPlanner {
             totalInterest = states.sumOf { it.interest },
             debtFreeMonth = if (closed) states.mapNotNull { it.closeMonth }.maxOrNull() else null,
             mandatoryByMonth = mandatory,
+            payments = payments,
         )
     }
 
@@ -157,16 +171,17 @@ object PayoffPlanner {
         today: LocalDate,
     ): List<String> = buildList {
         if (loans.isEmpty()) return@buildList
+        val label = LoanLabels.of(loans, today)
         val first = order.firstOrNull()
         if (first != null && loans.size > 1) {
             add(
                 when (strategy) {
                     PayoffStrategy.AVALANCHE ->
-                        "Все лишние деньги направляйте в «${first.name}»: у него самая высокая ставка " +
+                        "Все лишние деньги направляйте в ${label.getValue(first)}: у него самая высокая ставка " +
                             "(${rate(first.annualRate)}), каждый рубль досрочки там экономит больше всего. " +
                             "По остальным платите только обязательный платёж."
                     PayoffStrategy.SNOWBALL ->
-                        "Начните с «${first.name}»: у него самый маленький остаток, он закроется первым, " +
+                        "Начните с ${label.getValue(first)}: у него самый маленький остаток, он закроется первым, " +
                             "а его платёж вы добавите к досрочке по следующему кредиту."
                 },
             )
@@ -187,7 +202,7 @@ object PayoffPlanner {
             val gain = refinanceGain(loan, today)
             if (gain > 0) {
                 add(
-                    "«${loan.name}»: ставка ${rate(loan.annualRate)} — высокая. Рефинансирование под ${rate(REFINANCE_RATE)} " +
+                    "${label.getValue(loan).replaceFirstChar { it.uppercase() }}: ставка ${rate(loan.annualRate)} — высокая. Рефинансирование под ${rate(REFINANCE_RATE)} " +
                         "при том же сроке сократит переплату примерно на ${Money.format(gain)}. " +
                         "Сравните предложения банков и учтите страховки и комиссии.",
                 )
@@ -195,7 +210,7 @@ object PayoffPlanner {
         }
         for (card in loans.filter { it.isCard }) {
             add(
-                "Кредитная карта «${card.name}» учитывается в ПДН как 5% лимита (${Money.format(LoanMath.cardPayment(card))} в месяц), " +
+                "Кредитная карта ${label.getValue(card)} учитывается в ПДН как 5% лимита (${Money.format(LoanMath.cardPayment(card))} в месяц), " +
                     "даже без долга. Если карта не нужна, закройте её или уменьшите лимит — ПДН сразу снизится.",
             )
         }
