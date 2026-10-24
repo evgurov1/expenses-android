@@ -118,8 +118,7 @@ class AssistantViewModel @Inject constructor(
         viewModelScope.launch {
             val answer = runCatching { runAgent(q) }.getOrElse { e ->
                 if (e is LocalAssistant.PromptTooLong) {
-                    history.clear()
-                    "Разговор стал слишком длинным, я начал его заново. Повторите, пожалуйста, вопрос."
+                    "Вопрос получился слишком длинным для модели. Попробуйте сформулировать его короче."
                 } else {
                     "Не получилось ответить: ${e.message ?: e.javaClass.simpleName}"
                 }
@@ -140,7 +139,7 @@ class AssistantViewModel @Inject constructor(
         var lastToolText = ""
         repeat(MAX_STEPS) {
             val output = StringBuilder()
-            assistant.generate(AgentPrompt.render(system, history.takeLast(HISTORY) + turn)).collect { chunk ->
+            generateFitting(system, turn) { chunk ->
                 output.append(chunk)
                 val text = output.toString().trimStart()
                 // Вызов инструмента пользователю не показываем — только то, что модель пишет человеку.
@@ -159,11 +158,12 @@ class AssistantViewModel @Inject constructor(
             val result = tools.execute(call)
             result.paydays?.let { prefs.edit().putString(KEY_PAYDAYS, it.joinToString(",")).apply() }
             turn += AgentMessage(Role.ASSISTANT, raw)
-            turn += AgentMessage(Role.TOOL, result.text)
+            // В память модели кладём только начало длинного результата: целый график на год её переполняет.
+            turn += AgentMessage(Role.TOOL, compact(result.text))
             lastToolText = result.text
             if (result.showToUser) {
                 // График показываем как есть: пересказ длинного списка медленный и может исказить цифры.
-                turn += AgentMessage(Role.ASSISTANT, "Показал график пользователю.")
+                turn += AgentMessage(Role.ASSISTANT, "Показал график пользователю целиком.")
                 history += turn
                 return result.text
             }
@@ -171,6 +171,27 @@ class AssistantViewModel @Inject constructor(
         history += turn
         return lastToolText
     }
+
+    /**
+     * Генерация с запасом по длине: если переписка не помещается в память модели,
+     * забываем самые старые сообщения, а не начинаем разговор заново.
+     */
+    private suspend fun generateFitting(system: String, turn: List<AgentMessage>, onChunk: (String) -> Unit) {
+        while (true) {
+            try {
+                assistant.generate(AgentPrompt.render(system, history.takeLast(HISTORY) + turn)).collect(onChunk)
+                return
+            } catch (e: LocalAssistant.PromptTooLong) {
+                if (history.isEmpty()) throw e
+                repeat(maxOf(2, history.size / 2).coerceAtMost(history.size)) { history.removeAt(0) }
+                // Переписка должна начинаться с вопроса пользователя.
+                while (history.isNotEmpty() && history.first().role != Role.USER) history.removeAt(0)
+            }
+        }
+    }
+
+    private fun compact(text: String): String =
+        if (text.length <= TOOL_MEMORY) text else text.take(TOOL_MEMORY).substringBeforeLast('\n') + "\n… (дальше — то же по следующим месяцам)"
 
     private suspend fun tools(): LoanTools {
         val today = LocalDate.now()
@@ -195,6 +216,7 @@ class AssistantViewModel @Inject constructor(
     private companion object {
         const val KEY_PAYDAYS = "paydays"
         const val MAX_STEPS = 4
-        const val HISTORY = 8
+        const val HISTORY = 12
+        const val TOOL_MEMORY = 1200
     }
 }

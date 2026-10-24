@@ -135,7 +135,7 @@ class LocalAssistant @Inject constructor(@ApplicationContext private val context
         const val MODEL_FILE = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
         const val MODEL_URL = "https://huggingface.co/unsloth/Qwen3-4B-Instruct-2507-GGUF/resolve/main/$MODEL_FILE"
         const val MODEL_SIZE = 2_497_281_120L
-        const val CONTEXT_SIZE = 4096
+        const val CONTEXT_SIZE = 8192
         const val KEY_DOWNLOAD = "model_download_id"
     }
 }
