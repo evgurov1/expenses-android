@@ -4,6 +4,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.evgurov.expenses.bank.BankImporter
 import com.evgurov.expenses.bank.SkippedNotification
+import com.evgurov.expenses.domain.bank.StatementParser
+import com.evgurov.expenses.domain.model.Money
+import com.evgurov.expenses.importing.LoanTextExtractor
+import android.net.Uri
+import kotlinx.coroutines.flow.asStateFlow
 import com.evgurov.expenses.domain.model.Category
 import com.evgurov.expenses.domain.model.Transaction
 import com.evgurov.expenses.domain.repository.AccountRepository
@@ -23,6 +28,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 
 data class TransactionRow(
@@ -46,6 +52,7 @@ data class TransactionsUiState(
 class TransactionsViewModel @Inject constructor(
     private val transactions: TransactionRepository,
     private val importer: BankImporter,
+    private val extractor: LoanTextExtractor,
     categories: CategoryRepository,
     accounts: AccountRepository,
 ) : ViewModel() {
@@ -84,6 +91,29 @@ class TransactionsViewModel @Inject constructor(
 
     fun clearSkipped() = importer.clearSkipped()
 
+    private val _statementStatus = MutableStateFlow<String?>(null)
+
+    /** Что происходит с выпиской: «Читаю…» или итог загрузки. */
+    val statementStatus: StateFlow<String?> = _statementStatus.asStateFlow()
+
+    fun importStatement(uri: Uri) {
+        _statementStatus.value = "Читаю выписку…"
+        viewModelScope.launch {
+            _statementStatus.value = runCatching {
+                val statement = StatementParser.parse(extractor.fromPdf(uri))
+                    ?: return@runCatching "Не похоже на выписку по карте. Сейчас я понимаю выписки Т-Банка в PDF."
+                val result = importer.importStatement(statement)
+                month.value = YearMonth.from(result.to)
+                buildString {
+                    append("Выписка ${statement.bank.accountName} с ${result.from.format(DAY)} по ${result.to.format(DAY)}: ")
+                    append("добавлено операций — ${result.added}")
+                    if (result.duplicates > 0) append(", уже были — ${result.duplicates}")
+                    append(".")
+                }
+            }.getOrElse { "Не удалось прочитать файл: ${it.message ?: it.javaClass.simpleName}" }
+        }
+    }
+
     /** Смена категории; для операций из банка приложение запоминает выбор для этого магазина. */
     fun changeCategory(transaction: Transaction, categoryId: Long) {
         viewModelScope.launch { importer.learn(transaction, categoryId) }
@@ -93,3 +123,5 @@ class TransactionsViewModel @Inject constructor(
         viewModelScope.launch { transactions.delete(transaction) }
     }
 }
+
+private val DAY = DateTimeFormatter.ofPattern("dd.MM.yy")

@@ -16,7 +16,7 @@ data class BankOperation(
     val type: OperationType,
 )
 
-enum class OperationType { PURCHASE, TRANSFER, SALARY, CASHBACK, LOAN_PAYMENT, OTHER }
+enum class OperationType { PURCHASE, TRANSFER, SALARY, CASHBACK, LOAN_PAYMENT, FEE, OTHER }
 
 /**
  * Разбор пуш-уведомлений банков. Тексты у банков разные и меняются,
@@ -83,14 +83,7 @@ object BankNotificationParser {
             expenseWords.any { it in lower } -> false
             else -> return null
         }
-        val type = when {
-            "зарплат" in lower || "аванс" in lower -> OperationType.SALARY
-            "кэшбэк" in lower || "кешбэк" in lower || "cashback" in lower || "возврат" in lower -> OperationType.CASHBACK
-            "кредит" in lower && ("погашени" in lower || "платеж" in lower || "платёж" in lower || "списан" in lower) -> OperationType.LOAN_PAYMENT
-            "перевод" in lower || "пополнен" in lower || "сбп" in lower -> OperationType.TRANSFER
-            "покупк" in lower || "оплат" in lower -> OperationType.PURCHASE
-            else -> OperationType.OTHER
-        }
+        val type = typeOf(lower)
         return BankOperation(
             bank = bank,
             kind = if (income) TransactionKind.INCOME else TransactionKind.EXPENSE,
@@ -98,6 +91,17 @@ object BankNotificationParser {
             merchant = merchant(full, match.range.last + 1),
             type = type,
         )
+    }
+
+    /** Тип операции по словам в тексте (текст в нижнем регистре). */
+    fun typeOf(lower: String): OperationType = when {
+        "зарплат" in lower || "аванс" in lower || "от организации" in lower -> OperationType.SALARY
+        "кэшбэк" in lower || "кешбэк" in lower || "cashback" in lower || "возврат" in lower -> OperationType.CASHBACK
+        "комисси" in lower -> OperationType.FEE
+        "кредит" in lower && ("погашени" in lower || "платеж" in lower || "платёж" in lower || "списан" in lower) -> OperationType.LOAN_PAYMENT
+        "перевод" in lower || "пополнен" in lower || "сбп" in lower -> OperationType.TRANSFER
+        "покупк" in lower || "оплат" in lower -> OperationType.PURCHASE
+        else -> OperationType.OTHER
     }
 
     /** Магазин обычно идёт сразу после суммы: «450 ₽. PYATEROCHKA 1234. Доступно…» или «… в Пятёрочке». */

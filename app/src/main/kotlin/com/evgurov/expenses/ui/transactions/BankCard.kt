@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,7 +35,13 @@ import com.evgurov.expenses.ui.components.PillChip
 
 /** Включение загрузки операций из уведомлений банков. */
 @Composable
-fun BankCard(enabled: Boolean, skipped: List<SkippedNotification>, onClearSkipped: () -> Unit) {
+fun BankCard(
+    enabled: Boolean,
+    skipped: List<SkippedNotification>,
+    statementStatus: String?,
+    onPickStatement: () -> Unit,
+    onClearSkipped: () -> Unit,
+) {
     val context = LocalContext.current
     var showSkipped by remember { mutableStateOf(false) }
     AppCard(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -73,6 +80,16 @@ fun BankCard(enabled: Boolean, skipped: List<SkippedNotification>, onClearSkippe
                 }
             }
         }
+        OutlinedButton(onClick = onPickStatement, modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+            Text("Загрузить выписку (PDF)")
+        }
+        Text(
+            statementStatus ?: "Прошлые операции — из выписки: в Т-Банке нажмите на карту → «Реквизиты и выписки», " +
+                "выберите период и PDF. Повторная загрузка не создаёт дублей.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 8.dp),
+        )
     }
     if (showSkipped) {
         AlertDialog(

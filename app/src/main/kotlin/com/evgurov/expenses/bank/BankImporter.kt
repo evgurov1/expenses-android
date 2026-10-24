@@ -2,7 +2,9 @@ package com.evgurov.expenses.bank
 
 import android.content.Context
 import com.evgurov.expenses.domain.bank.BankNotificationParser
+import com.evgurov.expenses.domain.bank.BankOperation
 import com.evgurov.expenses.domain.bank.CategoryGuesser
+import com.evgurov.expenses.domain.bank.Statement
 import com.evgurov.expenses.domain.model.Account
 import com.evgurov.expenses.domain.model.AccountType
 import com.evgurov.expenses.domain.model.Category
@@ -24,6 +26,9 @@ import javax.inject.Singleton
 
 /** Уведомление банка, в котором не нашли операцию: показываем пользователю, чтобы было видно, что пропущено. */
 data class SkippedNotification(val bank: String, val text: String, val date: String)
+
+/** Итог загрузки выписки. */
+data class StatementImport(val added: Int, val duplicates: Int, val from: LocalDate, val to: LocalDate)
 
 /** Превращает уведомления банков в операции. Всё хранится только в базе на телефоне. */
 @Singleton
@@ -54,20 +59,11 @@ class BankImporter @Inject constructor(
             return@withLock
         }
 
-        val account = accounts.observeAll().first().firstOrNull { it.name == bank.accountName }?.id
-            ?: accounts.upsert(Account(name = bank.accountName, type = AccountType.CARD))
-        val all = categories.observeAll().first()
-        val learned = transactions.merchantRules().mapNotNull { (key, id) ->
-            all.firstOrNull { it.id == id && it.kind == operation.kind }?.let { key to it.name }
-        }.toMap()
-        val name = CategoryGuesser.guess(operation, learned)
-        val category = all.firstOrNull { it.name == name && it.kind == operation.kind }?.id
-            ?: categories.upsert(Category(name = name, kind = operation.kind))
-
+        val account = accountId(bank.accountName)
         transactions.insertIfNew(
             Transaction(
                 accountId = account,
-                categoryId = category,
+                categoryId = categoryId(operation),
                 amount = operation.amount,
                 kind = operation.kind,
                 date = date,
@@ -76,6 +72,60 @@ class BankImporter @Inject constructor(
                 externalId = "$packageName:$date:${(title + "|" + text).hashCode()}",
             ),
         )
+    }
+
+    /**
+     * Загружает выписку. Операции, которые уже пришли из уведомлений (та же дата, сумма и направление),
+     * и операции из прошлых загрузок той же выписки второй раз не добавляются.
+     */
+    suspend fun importStatement(statement: Statement): StatementImport = lock.withLock {
+        val account = accountId(statement.bank.accountName)
+        val from = statement.rows.minOf { it.date }
+        val to = statement.rows.maxOf { it.date }
+        val fromNotifications = transactions.observeBetween(from, to).first()
+            .filter { it.accountId == account && it.externalId?.startsWith("stmt:") != true }
+            .toMutableList()
+        val seen = mutableMapOf<String, Int>()
+        var added = 0
+        var duplicates = 0
+        for (row in statement.rows) {
+            val op = row.operation
+            val twin = fromNotifications.firstOrNull { it.date == row.date && it.amount == op.amount && it.kind == op.kind }
+            if (twin != null) {
+                fromNotifications.remove(twin)
+                duplicates++
+                continue
+            }
+            val key = "${row.date}|${row.time}|${op.amount}|${op.kind}|${row.description}"
+            val n = seen.merge(key, 1, Int::plus)
+            val inserted = transactions.insertIfNew(
+                Transaction(
+                    accountId = account,
+                    categoryId = categoryId(op),
+                    amount = op.amount,
+                    kind = op.kind,
+                    date = row.date,
+                    note = row.description,
+                    externalId = "stmt:${statement.bank.accountName}:${key.hashCode()}:$n",
+                ),
+            )
+            if (inserted) added++ else duplicates++
+        }
+        StatementImport(added, duplicates, from, to)
+    }
+
+    private suspend fun accountId(name: String): Long =
+        accounts.observeAll().first().firstOrNull { it.name == name }?.id
+            ?: accounts.upsert(Account(name = name, type = AccountType.CARD))
+
+    private suspend fun categoryId(operation: BankOperation): Long {
+        val all = categories.observeAll().first()
+        val learned = transactions.merchantRules().mapNotNull { (key, id) ->
+            all.firstOrNull { it.id == id && it.kind == operation.kind }?.let { key to it.name }
+        }.toMap()
+        val name = CategoryGuesser.guess(operation, learned)
+        return all.firstOrNull { it.name == name && it.kind == operation.kind }?.id
+            ?: categories.upsert(Category(name = name, kind = operation.kind))
     }
 
     /** Пользователь сменил категорию операции: запоминаем выбор для этого магазина. */

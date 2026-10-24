@@ -36,6 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.LocalContext
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.evgurov.expenses.bank.BankNotificationService
 import com.evgurov.expenses.ui.components.AppCard
@@ -57,6 +59,10 @@ fun TransactionsScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val skipped by viewModel.skipped.collectAsStateWithLifecycle()
+    val statementStatus by viewModel.statementStatus.collectAsStateWithLifecycle()
+    val pickStatement = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(viewModel::importStatement)
+    }
     var toDelete by remember { mutableStateOf<Transaction?>(null) }
     var selected by remember { mutableStateOf<Transaction?>(null) }
     val context = LocalContext.current
@@ -94,7 +100,13 @@ fun TransactionsScreen(
             contentPadding = PaddingValues(bottom = 88.dp),
         ) {
             item { SummaryCard(state.summary) }
-            item { BankCard(bankEnabled, skipped, onClearSkipped = viewModel::clearSkipped) }
+            item { BankCard(
+                    enabled = bankEnabled,
+                    skipped = skipped,
+                    statementStatus = statementStatus,
+                    onPickStatement = { pickStatement.launch(arrayOf("application/pdf")) },
+                    onClearSkipped = viewModel::clearSkipped,
+                ) }
             if (!state.loading && state.days.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
