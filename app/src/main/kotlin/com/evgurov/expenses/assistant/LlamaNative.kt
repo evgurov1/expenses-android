@@ -17,5 +17,9 @@ object LlamaNative {
     /** Число сгенерированных токенов или отрицательный код ошибки (-2 — запрос не помещается в контекст). */
     external fun generate(handle: Long, prompt: ByteArray, maxTokens: Int, temperature: Float, callback: TextCallback): Int
 
+    external fun saveState(handle: Long, path: String): Boolean
+
+    external fun loadState(handle: Long, path: String): Boolean
+
     external fun free(handle: Long)
 }

@@ -3,6 +3,7 @@ package com.evgurov.expenses.domain
 import com.evgurov.expenses.domain.assistant.AgentMessage
 import com.evgurov.expenses.domain.assistant.AgentPrompt
 import com.evgurov.expenses.domain.assistant.LoanTools
+import com.evgurov.expenses.domain.assistant.PendingAction
 import com.evgurov.expenses.domain.assistant.Role
 import com.evgurov.expenses.domain.model.Loan
 import com.evgurov.expenses.domain.model.LoanType
@@ -79,5 +80,31 @@ class AgentTest {
         assertTrue(one.text, amount in 8_000..13_000)
         println(all.text)
         println(one.text)
+    }
+    @Test
+    fun `prepares data changes for confirmation and answers about one loan`() {
+        val tools = LoanTools(listOf(ozon, vtb), 150_000_00, emptyList(), today)
+        fun run(json: String) = tools.execute(AgentPrompt.parseToolCall("<tool_call>$json</tool_call>")!!)
+
+        val early = run("{\"name\":\"record_early_payment\",\"arguments\":{\"loan\":\"озон\",\"amount\":50000}}")
+        val save = early.action as PendingAction.SaveLoan
+        assertTrue(early.text, early.text.startsWith("Подготовлено и ждёт подтверждения"))
+        assertTrue(save.summary, "Остаток станет ${Money.format(147_884_71)}" in save.summary)
+        assertEquals(1L, save.loan.id)
+        assertTrue(save.loan.bankSchedule.any { it.early && it.payment == 50_000_00L })
+
+        val income = run("{\"name\":\"set_income\",\"arguments\":{\"monthly_income\":200000}}")
+        assertEquals(200_000_00L, (income.action as PendingAction.SetIncome).amount)
+
+        val details = run("{\"name\":\"loan_details\",\"arguments\":{\"loan\":\"ВТБ\"}}")
+        assertNull(details.action)
+        assertTrue(details.text, details.text.startsWith("«Кредит ВТБ»"))
+        assertTrue(details.text, "Ближайшие платежи: 18.11.2026" in details.text)
+
+        val forecast = run("{\"name\":\"burden_forecast\",\"arguments\":{}}")
+        assertTrue(forecast.text, forecast.text.startsWith("ПДН сейчас"))
+        println(save.summary)
+        println(details.text)
+        println(forecast.text)
     }
 }

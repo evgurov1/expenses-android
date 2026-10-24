@@ -101,6 +101,17 @@ class LocalAssistant @Inject constructor(@ApplicationContext private val context
         isLoaded
     }
 
+    private val stateFile: File get() = File(context.filesDir, "assistant-prompt.kv")
+
+    /** Восстанавливает посчитанный в прошлый раз системный запрос: первый ответ после запуска приходит быстрее. */
+    suspend fun restorePrompt(): Boolean = withContext(llmThread) {
+        isLoaded && stateFile.exists() && LlamaNative.loadState(handle, stateFile.absolutePath)
+    }
+
+    suspend fun savePrompt() {
+        withContext(llmThread) { if (isLoaded) LlamaNative.saveState(handle, stateFile.absolutePath) }
+    }
+
     /** Ответ модели по кускам текста. maxTokens = 0 — только посчитать запрос заранее, чтобы следующий ответ был быстрее. */
     fun generate(prompt: String, maxTokens: Int = 512, temperature: Float = 0.3f): Flow<String> = callbackFlow {
         val job = launch(llmThread) {

@@ -8,7 +8,9 @@ import com.evgurov.expenses.assistant.ModelDownload
 import com.evgurov.expenses.domain.assistant.AgentMessage
 import com.evgurov.expenses.domain.assistant.AgentPrompt
 import com.evgurov.expenses.domain.assistant.LoanTools
+import com.evgurov.expenses.domain.assistant.PendingAction
 import com.evgurov.expenses.domain.assistant.Role
+import com.evgurov.expenses.domain.model.IncomeSource
 import com.evgurov.expenses.domain.repository.IncomeRepository
 import com.evgurov.expenses.domain.repository.LoanRepository
 import com.evgurov.expenses.domain.repository.TransactionRepository
@@ -31,7 +33,12 @@ data class ChatMessage(
     val pending: Boolean = false,
     /** Что помощник делает сейчас: «Составляю график…». */
     val status: String? = null,
+    /** Изменение данных, которое помощник предлагает сохранить. */
+    val action: PendingAction? = null,
+    val actionState: ActionState = ActionState.WAITING,
 )
+
+enum class ActionState { WAITING, SAVED, CANCELLED }
 
 data class AssistantUiState(
     val availability: AssistantAvailability = AssistantAvailability.CHECKING,
@@ -57,6 +64,9 @@ class AssistantViewModel @Inject constructor(
 
     /** Переписка для модели: вопросы, ответы, вызовы инструментов и их результаты. */
     private val history = mutableListOf<AgentMessage>()
+
+    /** Действие, которое инструмент подготовил в текущем ответе. */
+    private var pendingAction: PendingAction? = null
 
     init {
         when (val availability = assistant.availability()) {
@@ -97,7 +107,9 @@ class AssistantViewModel @Inject constructor(
             // Пока пользователь читает экран, заранее считаем системный запрос — первый ответ придёт быстрее.
             runCatching {
                 val system = AgentPrompt.system(tools().facts())
+                assistant.restorePrompt()
                 assistant.generate("<|im_start|>system\n$system${AgentPrompt.END}\n", maxTokens = 0).collect {}
+                assistant.savePrompt()
             }
         }
     }
@@ -121,7 +133,9 @@ class AssistantViewModel @Inject constructor(
                     "Не получилось ответить: ${e.message ?: e.javaClass.simpleName}"
                 }
             }
-            replaceLast(answer.ifBlank { "Не нашёл, что ответить. Попробуйте переформулировать вопрос." }, pending = false)
+            val action = pendingAction
+            pendingAction = null
+            replaceLast(answer.ifBlank { "Не нашёл, что ответить. Попробуйте переформулировать вопрос." }, pending = false, action = action)
             _state.update { it.copy(busy = false) }
         }
     }
@@ -159,6 +173,13 @@ class AssistantViewModel @Inject constructor(
             // В память модели кладём только начало длинного результата: целый график на год её переполняет.
             turn += AgentMessage(Role.TOOL, compact(result.text))
             lastToolText = result.text
+            result.action?.let { action ->
+                // Данные меняем только по кнопке: модель предложила, пользователь подтверждает.
+                turn += AgentMessage(Role.ASSISTANT, "Попросил пользователя подтвердить: ${action.summary}")
+                history += turn
+                pendingAction = action
+                return action.summary + extraNote(action)
+            }
             if (result.showToUser) {
                 // График показываем как есть: пересказ длинного списка медленный и может исказить цифры.
                 turn += AgentMessage(Role.ASSISTANT, "Показал график пользователю целиком.")
@@ -188,6 +209,46 @@ class AssistantViewModel @Inject constructor(
         }
     }
 
+    /** Пользователь нажал «Подтвердить» или «Отмена» под предложением помощника. */
+    fun resolveAction(index: Int, confirm: Boolean) {
+        val message = _state.value.messages.getOrNull(index) ?: return
+        val action = message.action ?: return
+        if (message.actionState != ActionState.WAITING) return
+        viewModelScope.launch {
+            val ok = !confirm || runCatching { apply(action) }.isSuccess
+            val newState = if (confirm && ok) ActionState.SAVED else ActionState.CANCELLED
+            _state.update { state ->
+                state.copy(messages = state.messages.mapIndexed { i, m -> if (i == index) m.copy(actionState = newState) else m })
+            }
+            history += AgentMessage(
+                Role.USER,
+                if (newState == ActionState.SAVED) "Подтверждаю, сохранено." else "Отмена, не сохраняй.",
+            )
+            history += AgentMessage(Role.ASSISTANT, if (newState == ActionState.SAVED) "Сохранил." else "Хорошо, ничего не меняю.")
+        }
+    }
+
+    private suspend fun apply(action: PendingAction) {
+        when (action) {
+            is PendingAction.SaveLoan -> loans.upsert(action.loan)
+            is PendingAction.SetIncome -> {
+                val sources = incomes.observeAll().first()
+                // Доход — сумма источников, поэтому оставляем один источник с новой суммой.
+                val keep = sources.firstOrNull()
+                incomes.upsert(keep?.copy(monthlyAmount = action.amount) ?: IncomeSource(name = "Зарплата", monthlyAmount = action.amount))
+                sources.drop(1).forEach { incomes.delete(it) }
+            }
+        }
+    }
+
+    private suspend fun extraNote(action: PendingAction): String = when (action) {
+        is PendingAction.SetIncome -> {
+            val count = incomes.observeAll().first().size
+            if (count > 1) "\n\nСейчас указано источников дохода: $count. Они заменятся одной суммой." else ""
+        }
+        is PendingAction.SaveLoan -> ""
+    }
+
     private fun compact(text: String): String =
         if (text.length <= TOOL_MEMORY) text else text.take(TOOL_MEMORY).substringBeforeLast('\n') + "\n… (дальше — то же по следующим месяцам)"
 
@@ -203,11 +264,14 @@ class AssistantViewModel @Inject constructor(
         "compare_strategies" -> "Сравниваю стратегии…"
         "payment_schedule" -> "Составляю график…"
         "save_paydays" -> "Запоминаю дни зарплаты…"
+        "record_early_payment" -> "Пересчитываю график…"
+        "loan_details" -> "Смотрю кредит…"
+        "burden_forecast" -> "Считаю ПДН…"
         else -> "Считаю…"
     }
 
-    private fun replaceLast(text: String, pending: Boolean, status: String? = null) = _state.update {
-        it.copy(messages = it.messages.dropLast(1) + ChatMessage(text, fromUser = false, pending = pending, status = status))
+    private fun replaceLast(text: String, pending: Boolean, status: String? = null, action: PendingAction? = null) = _state.update {
+        it.copy(messages = it.messages.dropLast(1) + ChatMessage(text, fromUser = false, pending = pending, status = status, action = action))
     }
 
     private companion object {

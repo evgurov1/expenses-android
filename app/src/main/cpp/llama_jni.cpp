@@ -99,6 +99,10 @@ Java_com_evgurov_expenses_assistant_LlamaNative_load(JNIEnv * env, jobject, jstr
     cparams.n_ubatch = 512;
     cparams.n_threads = n_threads;
     cparams.n_threads_batch = n_threads;
+    // Кэш в 8 бит вдвое экономит память: на телефоне свободно 3–4 ГБ, а модель занимает 2,5.
+    cparams.flash_attn_type = LLAMA_FLASH_ATTN_TYPE_ENABLED;
+    cparams.type_k = GGML_TYPE_Q8_0;
+    cparams.type_v = GGML_TYPE_Q8_0;
     llama_context * ctx = llama_init_from_model(model, cparams);
     if (!ctx) {
         LOGE("context init failed");
@@ -149,6 +153,7 @@ Java_com_evgurov_expenses_assistant_LlamaNative_generate(
     if (common == tokens.size()) --common;  // нужен хотя бы один токен, чтобы получить логиты
     llama_memory_seq_rm(llama_get_memory(e->ctx), 0, (llama_pos) common, -1);
     e->cached.resize(common);
+    const int64_t t0 = llama_time_us();
     if (!decode(*e, tokens, common)) {
         llama_memory_clear(llama_get_memory(e->ctx), true);
         e->cached.clear();
@@ -156,6 +161,9 @@ Java_com_evgurov_expenses_assistant_LlamaNative_generate(
         return -3;
     }
     e->cached = tokens;
+    const int64_t t1 = llama_time_us();
+    LOGI("prompt: %zu tokens, %zu reused, %zu computed in %.1f s",
+         tokens.size(), common, tokens.size() - common, (t1 - t0) / 1e6);
 
     jclass cls = env->GetObjectClass(callback);
     jmethodID on_text = env->GetMethodID(cls, "onText", "([B)Z");
@@ -204,5 +212,42 @@ Java_com_evgurov_expenses_assistant_LlamaNative_generate(
     }
     llama_batch_free(batch);
     llama_sampler_free(smpl);
+    if (produced > 0) {
+        const double secs = (llama_time_us() - t1) / 1e6;
+        LOGI("generated %d tokens in %.1f s (%.1f tok/s)", produced, secs, produced / secs);
+    }
     return produced;
+}
+
+/** Сохраняет посчитанный запрос (KV-кэш) в файл: после перезапуска не нужно считать его заново. */
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_evgurov_expenses_assistant_LlamaNative_saveState(JNIEnv * env, jobject, jlong handle, jstring jpath) {
+    auto * e = reinterpret_cast<Engine *>(handle);
+    if (!e || e->cached.empty()) return false;
+    const char * path = env->GetStringUTFChars(jpath, nullptr);
+    size_t n = llama_state_seq_save_file(e->ctx, path, 0, e->cached.data(), e->cached.size());
+    env->ReleaseStringUTFChars(jpath, path);
+    LOGI("state saved: %zu tokens, %zu bytes", e->cached.size(), n);
+    return n > 0;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_evgurov_expenses_assistant_LlamaNative_loadState(JNIEnv * env, jobject, jlong handle, jstring jpath) {
+    auto * e = reinterpret_cast<Engine *>(handle);
+    if (!e) return false;
+    const char * path = env->GetStringUTFChars(jpath, nullptr);
+    std::vector<llama_token> tokens(llama_n_ctx(e->ctx));
+    size_t count = 0;
+    const int64_t t0 = llama_time_us();
+    size_t n = llama_state_seq_load_file(e->ctx, path, 0, tokens.data(), tokens.size(), &count);
+    env->ReleaseStringUTFChars(jpath, path);
+    if (n == 0) {
+        llama_memory_clear(llama_get_memory(e->ctx), true);
+        e->cached.clear();
+        return false;
+    }
+    tokens.resize(count);
+    e->cached = tokens;
+    LOGI("state loaded: %zu tokens in %.1f s", count, (llama_time_us() - t0) / 1e6);
+    return true;
 }

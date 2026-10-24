@@ -30,6 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -117,7 +118,7 @@ fun AssistantScreen(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item { Header(state, onDownload = viewModel::download, onAsk = viewModel::ask) }
-            itemsIndexed(state.messages) { _, message -> Bubble(message) }
+            itemsIndexed(state.messages) { index, message -> Bubble(message) { confirm -> viewModel.resolveAction(index, confirm) } }
         }
     }
 }
@@ -189,7 +190,7 @@ private fun Header(state: AssistantUiState, onDownload: () -> Unit, onAsk: (Stri
 }
 
 @Composable
-private fun Bubble(message: ChatMessage) {
+private fun Bubble(message: ChatMessage, onAction: (Boolean) -> Unit) {
     val colors = MaterialTheme.colorScheme
     Box(Modifier.fillMaxWidth(), contentAlignment = if (message.fromUser) Alignment.CenterEnd else Alignment.CenterStart) {
         Box(
@@ -214,11 +215,35 @@ private fun Bubble(message: ChatMessage) {
                     }
                 }
             } else {
-                Text(
-                    message.text,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (message.fromUser) colors.onPrimary else colors.onSurface,
-                )
+                Column {
+                    Text(
+                        message.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (message.fromUser) colors.onPrimary else colors.onSurface,
+                    )
+                    if (message.action != null) {
+                        when (message.actionState) {
+                            ActionState.WAITING -> Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.padding(top = 12.dp),
+                            ) {
+                                Button(onClick = { onAction(true) }) { Text("Подтвердить") }
+                                OutlinedButton(onClick = { onAction(false) }) { Text("Отмена") }
+                            }
+                            ActionState.SAVED -> Text(
+                                "Сохранено",
+                                style = MaterialTheme.typography.labelLarge,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
+                            ActionState.CANCELLED -> Text(
+                                "Отменено",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = colors.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
+                        }
+                    }
+                }
             }
         }
     }
