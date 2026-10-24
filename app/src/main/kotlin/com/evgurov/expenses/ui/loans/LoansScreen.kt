@@ -18,7 +18,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.automirrored.filled.TrendingDown
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
@@ -65,6 +67,7 @@ fun LoansScreen(
     onAddLoan: () -> Unit,
     onImportLoan: () -> Unit,
     onOpenLoan: (Long) -> Unit,
+    onPayoff: () -> Unit,
     viewModel: LoansViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -103,6 +106,9 @@ fun LoansScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { BurdenCard(state) }
+            if (state.totalDebt > 0) {
+                item { PayoffEntry(onPayoff) }
+            }
 
             item { SectionTitle("Доход в месяц", Modifier.padding(top = 12.dp, start = 4.dp)) }
             item {
@@ -239,6 +245,33 @@ private fun BurdenCard(state: LoansUiState) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun PayoffEntry(onClick: () -> Unit) {
+    AppCard(onClick = onClick) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier.size(40.dp).background(MaterialTheme.colorScheme.primary, CircleShape),
+            ) {
+                Icon(Icons.AutoMirrored.Filled.TrendingDown, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary)
+            }
+            Column(Modifier.weight(1f).padding(start = 16.dp)) {
+                Text("Как закрыть быстрее", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    "План досрочного погашения и советы",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }

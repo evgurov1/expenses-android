@@ -28,6 +28,7 @@ import com.evgurov.expenses.ui.loans.AddLoanScreen
 import com.evgurov.expenses.ui.loans.ImportLoanScreen
 import com.evgurov.expenses.ui.loans.LoanDetailsScreen
 import com.evgurov.expenses.ui.loans.LoansScreen
+import com.evgurov.expenses.ui.loans.PayoffScreen
 import com.evgurov.expenses.ui.transactions.AddTransactionScreen
 import com.evgurov.expenses.ui.transactions.TransactionsScreen
 
@@ -35,6 +36,7 @@ private object Routes {
     const val LOANS = "loans"
     const val ADD_LOAN = "loans/add"
     const val IMPORT_LOAN = "loans/import"
+    const val PAYOFF = "loans/payoff"
     const val LOAN_DETAILS = "loans/{loanId}"
     fun loanDetails(id: Long) = "loans/$id"
     const val TRANSACTIONS = "transactions"
@@ -90,7 +92,11 @@ fun ExpensesNavHost() {
                     onAddLoan = { navController.navigate(Routes.ADD_LOAN) },
                     onImportLoan = { navController.navigate(Routes.IMPORT_LOAN) },
                     onOpenLoan = { navController.navigate(Routes.loanDetails(it)) },
+                    onPayoff = { navController.navigate(Routes.PAYOFF) },
                 )
+            }
+            composable(Routes.PAYOFF) {
+                PayoffScreen(onBack = { navController.popBackStack() })
             }
             composable(Routes.IMPORT_LOAN) {
                 ImportLoanScreen(
