@@ -2,7 +2,9 @@ package com.evgurov.expenses.data.db
 
 import androidx.room.Dao
 import androidx.room.Delete
+import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
@@ -47,18 +49,36 @@ interface TransactionDao {
 }
 
 @Dao
-interface LoanDao {
+abstract class LoanDao {
+    @Transaction
     @Query("SELECT * FROM loans ORDER BY id")
-    fun observeAll(): Flow<List<LoanEntity>>
+    abstract fun observeAll(): Flow<List<LoanWithPayments>>
 
+    @Transaction
     @Query("SELECT * FROM loans WHERE id = :id")
-    fun observe(id: Long): Flow<LoanEntity?>
+    abstract fun observe(id: Long): Flow<LoanWithPayments?>
 
     @Upsert
-    suspend fun upsert(loan: LoanEntity): Long
+    abstract suspend fun upsertLoan(loan: LoanEntity): Long
+
+    @Insert
+    abstract suspend fun insertPayments(payments: List<LoanPaymentEntity>)
+
+    @Query("DELETE FROM loan_payments WHERE loanId = :loanId")
+    abstract suspend fun deletePayments(loanId: Long)
+
+    /** Сохраняет кредит и заменяет его график целиком. */
+    @Transaction
+    open suspend fun save(loan: LoanEntity, payments: List<LoanPaymentEntity>): Long {
+        val inserted = upsertLoan(loan)
+        val id = if (loan.id != 0L) loan.id else inserted
+        deletePayments(id)
+        insertPayments(payments.map { it.copy(loanId = id) })
+        return id
+    }
 
     @Delete
-    suspend fun delete(loan: LoanEntity)
+    abstract suspend fun delete(loan: LoanEntity)
 }
 
 @Dao

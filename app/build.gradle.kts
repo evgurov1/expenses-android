@@ -46,6 +46,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    androidResources {
+        noCompress += "traineddata"
+    }
+
     buildFeatures {
         compose = true
     }
@@ -84,6 +88,9 @@ dependencies {
     implementation(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+
+    implementation(libs.pdfbox.android)
+    implementation(libs.tesseract4android)
 
     testImplementation(libs.junit)
 }

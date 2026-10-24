@@ -25,6 +25,7 @@ import androidx.navigation.compose.rememberNavController
 import com.evgurov.expenses.ui.accounts.AccountsScreen
 import com.evgurov.expenses.ui.categories.CategoriesScreen
 import com.evgurov.expenses.ui.loans.AddLoanScreen
+import com.evgurov.expenses.ui.loans.ImportLoanScreen
 import com.evgurov.expenses.ui.loans.LoanDetailsScreen
 import com.evgurov.expenses.ui.loans.LoansScreen
 import com.evgurov.expenses.ui.transactions.AddTransactionScreen
@@ -33,6 +34,7 @@ import com.evgurov.expenses.ui.transactions.TransactionsScreen
 private object Routes {
     const val LOANS = "loans"
     const val ADD_LOAN = "loans/add"
+    const val IMPORT_LOAN = "loans/import"
     const val LOAN_DETAILS = "loans/{loanId}"
     fun loanDetails(id: Long) = "loans/$id"
     const val TRANSACTIONS = "transactions"
@@ -86,7 +88,18 @@ fun ExpensesNavHost() {
             composable(Routes.LOANS) {
                 LoansScreen(
                     onAddLoan = { navController.navigate(Routes.ADD_LOAN) },
+                    onImportLoan = { navController.navigate(Routes.IMPORT_LOAN) },
                     onOpenLoan = { navController.navigate(Routes.loanDetails(it)) },
+                )
+            }
+            composable(Routes.IMPORT_LOAN) {
+                ImportLoanScreen(
+                    onBack = { navController.popBackStack() },
+                    onRecognized = {
+                        navController.navigate(Routes.ADD_LOAN) {
+                            popUpTo(Routes.IMPORT_LOAN) { inclusive = true }
+                        }
+                    },
                 )
             }
             composable(Routes.ADD_LOAN) {

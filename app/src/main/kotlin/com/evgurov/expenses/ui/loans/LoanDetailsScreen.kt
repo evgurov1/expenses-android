@@ -69,6 +69,7 @@ fun LoanDetailsScreen(
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Line("Тип", loan.type.label)
                         if (loan.bank.isNotBlank()) Line("Банк", loan.bank)
+                        if (loan.note.isNotBlank()) Line("Договор", loan.note.removePrefix("Договор "))
                         if (loan.isCard) {
                             loan.creditLimit?.let { Line("Лимит", Money.format(it)) }
                             Line("Текущий долг", Money.format(d.balance))
@@ -95,7 +96,11 @@ fun LoanDetailsScreen(
                         modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
                     )
                     Text(
-                        "Расчётный: по сумме, ставке и сроку. Точные даты и суммы смотрите в графике банка.",
+                        if (loan.bankSchedule.isNotEmpty()) {
+                            "Из документа банка."
+                        } else {
+                            "Расчётный: по сумме, ставке и сроку. Точные даты и суммы смотрите в графике банка."
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp),

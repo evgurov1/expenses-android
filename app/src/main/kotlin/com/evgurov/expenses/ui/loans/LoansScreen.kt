@@ -16,6 +16,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -55,6 +57,7 @@ import java.time.temporal.ChronoUnit
 @Composable
 fun LoansScreen(
     onAddLoan: () -> Unit,
+    onImportLoan: () -> Unit,
     onOpenLoan: (Long) -> Unit,
     viewModel: LoansViewModel = hiltViewModel(),
 ) {
@@ -64,16 +67,24 @@ fun LoansScreen(
     Scaffold(
         topBar = { TopAppBar(title = { Text("Кредиты") }) },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onAddLoan,
-                icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                text = { Text("Кредит") },
-            )
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                ExtendedFloatingActionButton(
+                    onClick = onImportLoan,
+                    icon = { Icon(Icons.Filled.DocumentScanner, contentDescription = null) },
+                    text = { Text("Из PDF или фото") },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                )
+                ExtendedFloatingActionButton(
+                    onClick = onAddLoan,
+                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
+                    text = { Text("Вручную") },
+                )
+            }
         },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(bottom = 96.dp),
+            contentPadding = PaddingValues(bottom = 168.dp),
         ) {
             item { BurdenCard(state) }
 
@@ -117,7 +128,7 @@ fun LoansScreen(
             if (!state.loading && state.loans.isEmpty()) {
                 item {
                     Text(
-                        "Кредитов пока нет. Нажмите «Кредит», чтобы добавить.",
+                        "Кредитов пока нет. Загрузите график платежей или договор из банка в PDF, скриншот или фото, либо добавьте кредит вручную.",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(16.dp),
                     )

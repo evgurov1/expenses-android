@@ -11,6 +11,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // Tesseract4Android (OCR на устройстве) публикуется только на JitPack.
+        maven("https://jitpack.io") {
+            content { includeGroupByRegex("cz\\.adaptech.*") }
+        }
     }
 }
 

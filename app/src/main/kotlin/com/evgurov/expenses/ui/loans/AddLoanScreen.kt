@@ -15,6 +15,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -63,7 +65,7 @@ fun AddLoanScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Новый кредит") },
+                title = { Text(if (form.importNote != null) "Проверьте кредит" else "Новый кредит") },
                 navigationIcon = {
                     IconButton(onClick = onDone) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
@@ -81,6 +83,12 @@ fun AddLoanScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            form.importNote?.let { note ->
+                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                    Text(note, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp))
+                }
+            }
+
             Text("Тип", style = MaterialTheme.typography.titleSmall)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 LoanType.entries.forEach { type ->
@@ -125,7 +133,9 @@ fun AddLoanScreen(
                 MoneyInput("Ежемесячный платёж из договора, ₽", form.paymentText) { v ->
                     viewModel.edit { it.copy(paymentText = v) }
                 }
-                form.calculatedPayment?.let {
+                if (form.importedSchedule.isNotEmpty()) {
+                    Hint("Остаток долга и даты платежей возьмём из графика банка (${form.importedSchedule.size} платежей).")
+                } else form.calculatedPayment?.let {
                     Hint("По сумме, ставке и сроку платёж ≈ ${Money.format(it)}. Если в договоре другая сумма, впишите её.")
                 }
                 MoneyInput("Остаток долга сейчас, ₽ (если знаете)", form.balanceText) { v ->

@@ -12,6 +12,8 @@ hilt = "2.52"
 hiltNavigationCompose = "1.2.0"
 room = "2.6.1"
 junit = "4.13.2"
+pdfbox = "2.0.27.0"
+tesseract = "4.7.0"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
@@ -34,6 +36,8 @@ room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 junit = { module = "junit:junit", version.ref = "junit" }
+pdfbox-android = { module = "com.tom-roush:pdfbox-android", version.ref = "pdfbox" }
+tesseract4android = { module = "cz.adaptech.tesseract4android:tesseract4android", version.ref = "tesseract" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

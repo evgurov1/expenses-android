@@ -4,11 +4,16 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.evgurov.expenses.domain.model.Kopecks
 import com.evgurov.expenses.domain.model.Loan
+import com.evgurov.expenses.domain.model.LoanSource
 import com.evgurov.expenses.domain.model.LoanType
 import com.evgurov.expenses.domain.model.Money
 import com.evgurov.expenses.domain.model.PaymentType
+import com.evgurov.expenses.domain.model.ScheduleItem
 import com.evgurov.expenses.domain.repository.LoanRepository
 import com.evgurov.expenses.domain.usecase.LoanMath
+import com.evgurov.expenses.importing.ImportDraft
+import com.evgurov.expenses.importing.ImportDraftHolder
+import com.evgurov.expenses.ui.components.shortTitle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +35,10 @@ data class LoanForm(
     val paymentText: String = "",
     val limitText: String = "",
     val balanceText: String = "",
+    val source: LoanSource = LoanSource.MANUAL,
+    val note: String = "",
+    val importedSchedule: List<ScheduleItem> = emptyList(),
+    val importNote: String? = null,
     val error: String? = null,
     val saved: Boolean = false,
 ) {
@@ -51,9 +60,10 @@ data class LoanForm(
 @HiltViewModel
 class AddLoanViewModel @Inject constructor(
     private val loans: LoanRepository,
+    drafts: ImportDraftHolder,
 ) : ViewModel() {
 
-    private val _form = MutableStateFlow(LoanForm())
+    private val _form = MutableStateFlow(drafts.take()?.let(::formFromImport) ?: LoanForm())
     val form: StateFlow<LoanForm> = _form.asStateFlow()
 
     fun edit(change: (LoanForm) -> LoanForm) = _form.update { change(it).copy(error = null) }
@@ -82,6 +92,8 @@ class AddLoanViewModel @Inject constructor(
                 annualRate = parseRate(f.rateText) ?: 0.0,
                 creditLimit = limit,
                 currentBalance = balance,
+                source = f.source,
+                note = f.note,
             )
         } else {
             val principal = Money.parse(f.principalText)?.takeIf { it > 0 } ?: error("Укажите сумму кредита")
@@ -98,10 +110,51 @@ class AddLoanViewModel @Inject constructor(
                 paymentType = f.paymentType,
                 monthlyPayment = optionalMoney(f.paymentText, "Платёж указан неверно"),
                 currentBalance = balance,
+                source = f.source,
+                note = f.note,
+                bankSchedule = f.importedSchedule,
             )
         }
     }
 
     private fun optionalMoney(text: String, message: String): Kopecks? =
         if (text.isBlank()) null else Money.parse(text)?.takeIf { it >= 0 } ?: error(message)
+}
+
+private fun plain(amount: Kopecks): String = Money.format(amount).removeSuffix("\u00A0₽")
+
+private fun formFromImport(draft: ImportDraft): LoanForm {
+    val parsed = draft.parsed
+    val loan = parsed.toLoan(draft.source)
+    val from = if (draft.source == LoanSource.PHOTO) "изображения" else "PDF"
+    val found = buildList {
+        if (loan.bank.isNotBlank()) add("банк ${loan.bank}")
+        parsed.contractNumber?.let { add("договор № $it") }
+        parsed.principal?.let { add("сумма ${Money.format(it)}") }
+        loan.bankSchedule.lastOrNull()?.let {
+            add("график: ${loan.bankSchedule.size} платежей до ${it.dueDate.shortTitle()}")
+        }
+        if (parsed.earlyPayments.isNotEmpty()) add("досрочных платежей: ${parsed.earlyPayments.size}")
+        parsed.annualRate?.let {
+            add(if (parsed.rateIsEstimated) "ставка ≈${formatRate(it)} (оценка по графику, сверьте с договором)" else "ставка ${formatRate(it)}")
+        }
+    }
+    val note = "Распознано из $from: " + found.joinToString(", ").ifBlank { "немного данных" } +
+        ". Проверьте поля и дополните недостающие."
+    return LoanForm(
+        type = loan.type,
+        name = loan.name,
+        bank = loan.bank,
+        principalText = if (loan.principal > 0) plain(loan.principal) else "",
+        rateText = if (loan.annualRate > 0) formatRate(loan.annualRate).removeSuffix("%") else "",
+        termText = if (loan.termMonths > 0) loan.termMonths.toString() else "",
+        issueDate = loan.issueDate,
+        paymentText = loan.monthlyPayment?.let(::plain).orEmpty(),
+        limitText = loan.creditLimit?.let(::plain).orEmpty(),
+        balanceText = loan.currentBalance?.let(::plain).orEmpty(),
+        source = draft.source,
+        note = loan.note,
+        importedSchedule = loan.bankSchedule,
+        importNote = note,
+    )
 }

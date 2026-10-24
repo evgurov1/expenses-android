@@ -3,6 +3,7 @@ package com.evgurov.expenses.data.db
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
@@ -12,8 +13,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         TransactionEntity::class,
         LoanEntity::class,
         IncomeSourceEntity::class,
+        LoanPaymentEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -59,5 +61,20 @@ abstract class ExpensesDatabase : RoomDatabase() {
 
     companion object {
         const val NAME = "expenses.db"
+
+        /** v3: график платежей из документа банка. */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `loan_payments` (" +
+                        "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `loanId` INTEGER NOT NULL, " +
+                        "`number` INTEGER NOT NULL, `dueDate` INTEGER NOT NULL, `payment` INTEGER NOT NULL, " +
+                        "`principalPart` INTEGER NOT NULL, `interestPart` INTEGER NOT NULL, " +
+                        "`balanceAfter` INTEGER NOT NULL, " +
+                        "FOREIGN KEY(`loanId`) REFERENCES `loans`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_loan_payments_loanId` ON `loan_payments` (`loanId`)")
+            }
+        }
     }
 }

@@ -29,15 +29,22 @@ object LoanMath {
     fun regularPayment(loan: Loan): Kopecks = when {
         loan.isCard -> cardPayment(loan)
         loan.monthlyPayment != null -> loan.monthlyPayment
+        loan.bankSchedule.isNotEmpty() -> typicalPayment(loan.bankSchedule)
         loan.termMonths <= 0 -> 0
         loan.paymentType == PaymentType.ANNUITY -> annuityPayment(loan.principal, loan.annualRate, loan.termMonths)
         else -> schedule(loan).firstOrNull()?.payment ?: 0
     }
 
+    /** Самый частый ненулевой платёж графика — это и есть регулярный платёж. */
+    fun typicalPayment(schedule: List<ScheduleItem>): Kopecks =
+        schedule.map { it.payment }.filter { it > 0 }.groupingBy { it }.eachCount()
+            .maxWithOrNull(compareBy<Map.Entry<Kopecks, Int>> { it.value }.thenBy { it.key })?.key ?: 0
+
     fun cardPayment(loan: Loan): Kopecks = ((loan.creditLimit ?: 0) * CARD_LIMIT_SHARE).roundToLong()
 
     /** Полный график платежей с момента выдачи. Для кредитной карты график пустой. */
     fun schedule(loan: Loan): List<ScheduleItem> {
+        if (loan.bankSchedule.isNotEmpty()) return loan.bankSchedule
         if (loan.isCard || loan.termMonths <= 0 || loan.principal <= 0) return emptyList()
         val r = monthlyRate(loan.annualRate)
         val annuity = loan.monthlyPayment ?: annuityPayment(loan.principal, loan.annualRate, loan.termMonths)

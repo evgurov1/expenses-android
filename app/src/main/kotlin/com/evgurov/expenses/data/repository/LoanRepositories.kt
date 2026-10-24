@@ -4,6 +4,7 @@ import com.evgurov.expenses.data.db.IncomeSourceDao
 import com.evgurov.expenses.data.db.LoanDao
 import com.evgurov.expenses.data.db.toDomain
 import com.evgurov.expenses.data.db.toEntity
+import com.evgurov.expenses.data.db.toPaymentEntities
 import com.evgurov.expenses.domain.model.IncomeSource
 import com.evgurov.expenses.domain.model.Loan
 import com.evgurov.expenses.domain.repository.IncomeRepository
@@ -15,7 +16,7 @@ import javax.inject.Inject
 class RoomLoanRepository @Inject constructor(private val dao: LoanDao) : LoanRepository {
     override fun observeAll(): Flow<List<Loan>> = dao.observeAll().map { list -> list.map { it.toDomain() } }
     override fun observe(id: Long): Flow<Loan?> = dao.observe(id).map { it?.toDomain() }
-    override suspend fun upsert(loan: Loan): Long = dao.upsert(loan.toEntity())
+    override suspend fun upsert(loan: Loan): Long = dao.save(loan.toEntity(), loan.toPaymentEntities(loan.id))
     override suspend fun delete(loan: Loan) = dao.delete(loan.toEntity())
 }
 

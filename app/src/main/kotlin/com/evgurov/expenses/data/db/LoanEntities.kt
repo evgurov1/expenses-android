@@ -1,12 +1,17 @@
 package com.evgurov.expenses.data.db
 
+import androidx.room.Embedded
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.room.Relation
 import com.evgurov.expenses.domain.model.IncomeSource
 import com.evgurov.expenses.domain.model.Loan
 import com.evgurov.expenses.domain.model.LoanSource
 import com.evgurov.expenses.domain.model.LoanType
 import com.evgurov.expenses.domain.model.PaymentType
+import com.evgurov.expenses.domain.model.ScheduleItem
 import java.time.LocalDate
 
 @Entity(tableName = "loans")
@@ -27,6 +32,36 @@ data class LoanEntity(
     val note: String,
 )
 
+/** Строка графика платежей из документа банка. */
+@Entity(
+    tableName = "loan_payments",
+    foreignKeys = [
+        ForeignKey(
+            entity = LoanEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["loanId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("loanId")],
+)
+data class LoanPaymentEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val loanId: Long,
+    val number: Int,
+    val dueDate: LocalDate,
+    val payment: Long,
+    val principalPart: Long,
+    val interestPart: Long,
+    val balanceAfter: Long,
+)
+
+data class LoanWithPayments(
+    @Embedded val loan: LoanEntity,
+    @Relation(parentColumn = "id", entityColumn = "loanId")
+    val payments: List<LoanPaymentEntity>,
+)
+
 @Entity(tableName = "income_sources")
 data class IncomeSourceEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -34,10 +69,25 @@ data class IncomeSourceEntity(
     val monthlyAmount: Long,
 )
 
-fun LoanEntity.toDomain() = Loan(
-    id, type, name, bank, principal, annualRate, termMonths, issueDate,
-    paymentType, monthlyPayment, creditLimit, currentBalance, source, note,
+fun LoanWithPayments.toDomain() = Loan(
+    loan.id, loan.type, loan.name, loan.bank, loan.principal, loan.annualRate, loan.termMonths, loan.issueDate,
+    loan.paymentType, loan.monthlyPayment, loan.creditLimit, loan.currentBalance, loan.source, loan.note,
+    bankSchedule = payments.sortedBy { it.number }.map {
+        ScheduleItem(it.number, it.dueDate, it.payment, it.principalPart, it.interestPart, it.balanceAfter)
+    },
 )
+
+fun Loan.toPaymentEntities(loanId: Long) = bankSchedule.map {
+    LoanPaymentEntity(
+        loanId = loanId,
+        number = it.number,
+        dueDate = it.dueDate,
+        payment = it.payment,
+        principalPart = it.principalPart,
+        interestPart = it.interestPart,
+        balanceAfter = it.balanceAfter,
+    )
+}
 
 fun Loan.toEntity() = LoanEntity(
     id, type, name, bank, principal, annualRate, termMonths, issueDate,
