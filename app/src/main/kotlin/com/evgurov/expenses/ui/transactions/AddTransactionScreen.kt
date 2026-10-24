@@ -18,7 +18,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +42,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.evgurov.expenses.ui.components.appFieldColors
+import com.evgurov.expenses.ui.components.PillChip
 import com.evgurov.expenses.domain.model.TransactionKind
 import com.evgurov.expenses.ui.components.label
 import com.evgurov.expenses.ui.components.shortTitle
@@ -97,6 +98,8 @@ fun AddTransactionScreen(
             }
 
             OutlinedTextField(
+
+                colors = appFieldColors(),
                 value = form.amountText,
                 onValueChange = viewModel::setAmount,
                 label = { Text("Сумма, ₽") },
@@ -108,22 +111,14 @@ fun AddTransactionScreen(
             SectionTitle("Категория")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 state.categories.forEach { category ->
-                    FilterChip(
-                        selected = form.categoryId == category.id,
-                        onClick = { viewModel.setCategory(category.id) },
-                        label = { Text(category.name) },
-                    )
+                    PillChip(selected = form.categoryId == category.id, onClick = { viewModel.setCategory(category.id) }, label = category.name)
                 }
             }
 
             SectionTitle("Счёт")
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 state.accounts.forEach { account ->
-                    FilterChip(
-                        selected = state.selectedAccountId == account.id,
-                        onClick = { viewModel.setAccount(account.id) },
-                        label = { Text(account.name) },
-                    )
+                    PillChip(selected = state.selectedAccountId == account.id, onClick = { viewModel.setAccount(account.id) }, label = account.name)
                 }
             }
 
@@ -133,6 +128,8 @@ fun AddTransactionScreen(
             }
 
             OutlinedTextField(
+
+                colors = appFieldColors(),
                 value = form.note,
                 onValueChange = viewModel::setNote,
                 label = { Text("Комментарий") },

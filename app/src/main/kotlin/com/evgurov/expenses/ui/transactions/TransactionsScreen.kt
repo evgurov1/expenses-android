@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.Card
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -36,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.evgurov.expenses.ui.components.AppCard
 import com.evgurov.expenses.domain.model.Money
 import com.evgurov.expenses.domain.model.Transaction
 import com.evgurov.expenses.domain.model.TransactionKind
@@ -133,13 +133,13 @@ fun TransactionsScreen(
 
 @Composable
 private fun SummaryCard(summary: PeriodSummary) {
-    Card(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
+    AppCard(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             SummaryValue("Доходы", Money.format(summary.income), IncomeColor)
-            SummaryValue("Расходы", Money.format(summary.expense), MaterialTheme.colorScheme.error)
+            SummaryValue("Расходы", Money.format(summary.expense), MaterialTheme.colorScheme.onSurface)
             SummaryValue("Итог", Money.format(summary.net), MaterialTheme.colorScheme.onSurface)
         }
     }

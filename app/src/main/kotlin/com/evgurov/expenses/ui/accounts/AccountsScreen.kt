@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -36,6 +35,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.evgurov.expenses.ui.components.appFieldColors
+import com.evgurov.expenses.ui.components.PillChip
 import com.evgurov.expenses.domain.model.Account
 import com.evgurov.expenses.domain.model.AccountType
 import com.evgurov.expenses.domain.model.Kopecks
@@ -121,6 +122,7 @@ private fun AddAccountDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
+                    colors = appFieldColors(),
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Название") },
@@ -129,10 +131,11 @@ private fun AddAccountDialog(
                 )
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     AccountType.entries.forEach {
-                        FilterChip(selected = type == it, onClick = { type = it }, label = { Text(it.label) })
+                        PillChip(selected = type == it, onClick = { type = it }, label = it.label)
                     }
                 }
                 OutlinedTextField(
+                    colors = appFieldColors(),
                     value = balanceText,
                     onValueChange = { balanceText = it },
                     label = { Text("Начальный остаток, ₽") },

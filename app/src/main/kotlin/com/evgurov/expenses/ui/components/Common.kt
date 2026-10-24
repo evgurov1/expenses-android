@@ -1,6 +1,21 @@
 package com.evgurov.expenses.ui.components
 
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.TextFieldColors
+import androidx.compose.material3.CardDefaults
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -81,5 +96,80 @@ fun ConfirmDeleteDialog(
         text = { Text(text) },
         confirmButton = { TextButton(onClick = onConfirm) { Text("Удалить") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
+    )
+}
+
+private val CardShape = RoundedCornerShape(12.dp)
+
+/** Белая карточка без рамки с мягкой тенью — основной блок интерфейса. */
+@Composable
+fun AppCard(
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    contentPadding: Dp = 20.dp,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val shadowed = modifier.shadow(
+        elevation = 6.dp,
+        shape = CardShape,
+        ambientColor = Color(0x0D242424),
+        spotColor = Color(0x1A242424),
+    )
+    val colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLowest)
+    val body: @Composable ColumnScope.() -> Unit = { Column(Modifier.padding(contentPadding), content = content) }
+    if (onClick != null) {
+        Card(onClick = onClick, modifier = shadowed, shape = CardShape, colors = colors, content = body)
+    } else {
+        Card(modifier = shadowed, shape = CardShape, colors = colors, content = body)
+    }
+}
+
+/** Небольшой заголовок раздела над карточками. */
+@Composable
+fun SectionTitle(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleLarge,
+        color = MaterialTheme.colorScheme.onBackground,
+        modifier = modifier,
+    )
+}
+
+/** Фильтр-таблетка: выбранная — чёрная, остальные — белые с тонкой рамкой. */
+@Composable
+fun PillChip(selected: Boolean, onClick: () -> Unit, label: String) {
+    val colors = MaterialTheme.colorScheme
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label, modifier = Modifier.padding(vertical = 6.dp)) },
+        shape = CircleShape,
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = colors.surfaceContainerLowest,
+            labelColor = colors.onSurface,
+            selectedContainerColor = colors.primary,
+            selectedLabelColor = colors.onPrimary,
+        ),
+        border = FilterChipDefaults.filterChipBorder(
+            enabled = true,
+            selected = selected,
+            borderColor = colors.outlineVariant,
+            selectedBorderColor = colors.primary,
+        ),
+    )
+}
+
+/** Поля ввода: белые на сером фоне, рамка чёрная при фокусе. */
+@Composable
+fun appFieldColors(): TextFieldColors {
+    val colors = MaterialTheme.colorScheme
+    return OutlinedTextFieldDefaults.colors(
+        focusedContainerColor = colors.surfaceContainerLowest,
+        unfocusedContainerColor = colors.surfaceContainerLowest,
+        errorContainerColor = colors.surfaceContainerLowest,
+        focusedBorderColor = colors.primary,
+        unfocusedBorderColor = colors.outline,
+        focusedLabelColor = colors.onSurface,
+        cursorColor = colors.primary,
     )
 }

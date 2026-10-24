@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -20,7 +21,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -42,6 +42,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.evgurov.expenses.ui.components.appFieldColors
+import com.evgurov.expenses.ui.components.PillChip
 import com.evgurov.expenses.domain.model.LoanType
 import com.evgurov.expenses.domain.model.Money
 import com.evgurov.expenses.domain.model.PaymentType
@@ -84,19 +86,21 @@ fun AddLoanScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             form.importNote?.let { note ->
-                Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+                Card(
+                    shape = MaterialTheme.shapes.medium,
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                    ),
+                ) {
                     Text(note, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp))
                 }
             }
 
-            Text("Тип", style = MaterialTheme.typography.titleSmall)
+            Text("Тип", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 LoanType.entries.forEach { type ->
-                    FilterChip(
-                        selected = form.type == type,
-                        onClick = { viewModel.edit { it.copy(type = type) } },
-                        label = { Text(type.label) },
-                    )
+                    PillChip(selected = form.type == type, onClick = { viewModel.edit { it.copy(type = type) } }, label = type.label)
                 }
             }
 
@@ -122,11 +126,7 @@ fun AddLoanScreen(
 
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     PaymentType.entries.forEach { type ->
-                        FilterChip(
-                            selected = form.paymentType == type,
-                            onClick = { viewModel.edit { it.copy(paymentType = type) } },
-                            label = { Text(type.label) },
-                        )
+                        PillChip(selected = form.paymentType == type, onClick = { viewModel.edit { it.copy(paymentType = type) } }, label = type.label)
                     }
                 }
 
@@ -145,7 +145,7 @@ fun AddLoanScreen(
 
             form.error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
-            Button(onClick = viewModel::save, modifier = Modifier.fillMaxWidth()) {
+            Button(onClick = viewModel::save, modifier = Modifier.fillMaxWidth().padding(top = 8.dp).height(52.dp)) {
                 Text("Сохранить")
             }
         }
@@ -176,6 +176,7 @@ fun AddLoanScreen(
 @Composable
 private fun TextInput(label: String, value: String, onChange: (String) -> Unit) {
     OutlinedTextField(
+        colors = appFieldColors(),
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
@@ -196,6 +197,7 @@ private fun NumberInput(
     onChange: (String) -> Unit,
 ) {
     OutlinedTextField(
+        colors = appFieldColors(),
         value = value,
         onValueChange = onChange,
         label = { Text(label) },
