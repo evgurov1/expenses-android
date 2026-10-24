@@ -20,7 +20,21 @@ android {
         versionName = "0.1.0"
     }
 
+    // Общий debug-ключ в репозитории: иначе каждая сборка в CI подписана новым ключом,
+    // и APK не ставится поверх предыдущей версии.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
