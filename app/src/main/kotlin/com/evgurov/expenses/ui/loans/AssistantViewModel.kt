@@ -54,6 +54,9 @@ class AssistantViewModel @Inject constructor(
     val state: StateFlow<AssistantUiState> = _state.asStateFlow()
 
     private val history = mutableListOf<ChatTurn>()
+
+    /** Мы спросили дни зарплаты: следующий короткий ответ вроде «5 и 20» — это они. */
+    private var awaitingPaydays = false
     private var job: Job? = null
 
     /** Доплата в месяц, от которой считаются советы, если в вопросе нет своей суммы. */
@@ -95,13 +98,15 @@ class AssistantViewModel @Inject constructor(
             )
         }
         job = viewModelScope.launch {
-            if (AdvisorPrompt.asksForSchedule(q)) {
+            val days = PaydaySchedule.paydaysFromText(q, expectingDays = awaitingPaydays)
+            if (AdvisorPrompt.asksForSchedule(q) || days.isNotEmpty()) {
                 // График считаем сами: модель путает даты и суммы, а здесь нужна точность до рубля.
                 val text = runCatching { scheduleAnswer(q) }.getOrElse { e -> "Не получилось составить график: ${e.message}" }
                 history += ChatTurn(q, text)
                 finish(text)
                 return@launch
             }
+            awaitingPaydays = false
             val prompt = runCatching { buildPrompt(q) }.getOrElse { e ->
                 finish("Не получилось собрать данные по кредитам: ${e.message}")
                 return@launch
@@ -125,13 +130,12 @@ class AssistantViewModel @Inject constructor(
     }
 
     private suspend fun scheduleAnswer(question: String): String {
-        PaydaySchedule.paydaysFromText(question).takeIf { it.isNotEmpty() }?.let { days ->
+        PaydaySchedule.paydaysFromText(question, expectingDays = awaitingPaydays).takeIf { it.isNotEmpty() }?.let { days ->
             prefs.edit().putString(PAYDAYS, days.joinToString(",")).apply()
         }
         val paydays = prefs.getString(PAYDAYS, null).orEmpty().split(",").mapNotNull { it.trim().toIntOrNull() }
-        if (paydays.isEmpty()) {
-            return "Напишите, в какие числа приходит зарплата, например: «график, зарплата 5 и 20 числа». Запомню и распишу платежи."
-        }
+        // Без дней зарплаты сразу показываем график по датам списания и спрашиваем дни.
+        awaitingPaydays = paydays.isEmpty()
         val today = LocalDate.now()
         val loanList = loans.observeAll().first()
         val extra = AdvisorPrompt.extraFromQuestion(question) ?: extraMonthly

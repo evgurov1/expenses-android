@@ -29,25 +29,45 @@ data class Payday(
 object PaydaySchedule {
     private val daysInQuestion = Regex("""(?<!\d)(\d{1,2})(?!\d)""")
 
-    /** Дни зарплаты из фразы вроде «зарплата 5 и 20 числа». Пусто — если дней в вопросе нет. */
-    fun paydaysFromText(text: String): List<Int> {
+    private val answerNoise = Regex("""[\d\s,.;и-]|го|зарплат\p{L}*|аванс\p{L}*""")
+
+    private val dayPair = Regex("""(?<!\d)(\d{1,2})(?:-?го)?\s*(?:и|,)\s*(\d{1,2})(?!\d)""")
+
+    /**
+     * Дни зарплаты: «зарплата 5 и 20 числа», «зарплата 5 и 20».
+     * [expectingDays] — мы только что спросили про дни, и короткий ответ «5 и20» тоже считаем днями.
+     */
+    fun paydaysFromText(text: String, expectingDays: Boolean = false): List<Int> {
         val lower = text.lowercase()
-        if (!lower.contains("числ")) return emptyList()
-        val head = lower.substringBeforeLast("числ")
-        return daysInQuestion.findAll(head).mapNotNull { it.groupValues[1].toIntOrNull() }
-            .filter { it in 1..31 }.distinct().sorted().toList()
+        val source = when {
+            lower.contains("числ") -> lower.substringBeforeLast("числ")
+            // Короткий ответ только из чисел: «5 и20», «10, 25». «Закрою за 13 месяцев» сюда не попадёт.
+            expectingDays && lower.replace(answerNoise, "").isEmpty() -> lower
+            lower.contains("зарплат") || lower.contains("аванс") ->
+                dayPair.find(lower)?.value ?: return emptyList()
+            else -> return emptyList()
+        }
+        val days = daysInQuestion.findAll(source).mapNotNull { it.groupValues[1].toIntOrNull() }.toList()
+        // В ответе на вопрос про дни не должно быть сумм: «зарплата 80 000» — это не дни.
+        if (expectingDays && days.any { it > 31 }) return emptyList()
+        if (expectingDays && Regex("""\d{3}""").containsMatchIn(source)) return emptyList()
+        return days.filter { it in 1..31 }.distinct().sorted()
     }
 
     fun build(plan: PayoffPlan, paydays: List<Int>, today: LocalDate, months: Int = 3): List<Payday> {
+        // Без дней зарплаты показываем платежи по датам списания.
         val days = paydays.filter { it in 1..31 }.distinct().sorted()
-        if (days.isEmpty()) return emptyList()
         val first = plan.payments.firstOrNull()?.month ?: return emptyList()
         // Берём на месяц больше: платёж в начале следующего месяца оплачивается с зарплаты последнего показанного.
         val shown = (0..months).map { first.plusMonths(it.toLong()) }.toSet()
         val end = first.plusMonths(months.toLong()).atDay(1)
         val byDate = sortedMapOf<LocalDate, MutableList<PaydayItem>>()
         for (payment in plan.payments.filter { it.month in shown }) {
-            if (payment.early) {
+            if (days.isEmpty()) {
+                val due = dueDate(payment.loan, payment.month)
+                byDate.getOrPut(due.coerceAtLeast(today)) { mutableListOf() } +=
+                    PaydayItem(payment.loan, payment.amount, if (payment.early) null else due)
+            } else if (payment.early) {
                 val dates = days.map { dayIn(payment.month, it) }
                 val parts = split(payment.amount, dates.size)
                 dates.zip(parts).filter { it.second > 0 }.forEach { (date, part) ->
@@ -62,7 +82,7 @@ object PaydaySchedule {
         return byDate.filterKeys { it.isBefore(end) }.map { (date, items) ->
             Payday(
                 date = date,
-                alreadyPaid = date == today && days.none { dayIn(YearMonth.from(today), it) == today },
+                alreadyPaid = days.isNotEmpty() && date == today && days.none { dayIn(YearMonth.from(today), it) == today },
                 items = items.groupBy { it.loan to it.dueDate }
                     .map { (key, list) -> PaydayItem(key.first, list.sumOf { it.amount }, key.second) }
                     .sortedWith(compareBy<PaydayItem> { it.dueDate == null }.thenBy { it.dueDate }),
@@ -80,7 +100,8 @@ object PaydaySchedule {
         today: LocalDate,
     ): String = buildString {
         val label = LoanLabels.of(loans, today)
-        append("График по зарплатам ${paydays.joinToString(" и ")} числа")
+        val byPayday = paydays.isNotEmpty()
+        append(if (byPayday) "График по зарплатам ${paydays.joinToString(" и ")} числа" else "График платежей на 3 месяца")
         if (extraMonthly > 0) {
             append(", с доплатой ${Money.format(extraMonthly)} в месяц")
             firstTarget?.let { append(" (досрочка сначала в ${label[it] ?: "«${it.name}»"})") }
@@ -89,12 +110,17 @@ object PaydaySchedule {
         for (payday in schedule) {
             appendLine()
             appendLine(
-                if (payday.alreadyPaid) "Из денег, которые уже есть (до следующей зарплаты) — ${Money.format(payday.total)}:"
-                else "${dateText(payday.date)}, с зарплаты — ${Money.format(payday.total)}:",
+                when {
+                    !byPayday -> "${dateText(payday.date)} — ${Money.format(payday.total)}:"
+                    payday.alreadyPaid -> "Из денег, которые уже есть (до следующей зарплаты) — ${Money.format(payday.total)}:"
+                    else -> "${dateText(payday.date)}, с зарплаты — ${Money.format(payday.total)}:"
+                },
             )
             for (item in payday.items) {
                 val name = label[item.loan] ?: "«${item.loan.name}»"
-                if (item.dueDate != null) {
+                if (item.dueDate != null && !byPayday) {
+                    appendLine("• $name — ${Money.format(item.amount)}")
+                } else if (item.dueDate != null) {
                     appendLine("• $name — ${Money.format(item.amount)}, спишут ${dateText(item.dueDate)}")
                 } else {
                     appendLine("• $name — досрочно ${Money.format(item.amount)}")
@@ -103,8 +129,13 @@ object PaydaySchedule {
         }
         appendLine()
         append(
-            "Платёж кладите на счёт кредита сразу в день зарплаты. Досрочку оформляйте в приложении банка " +
-                "с уменьшением срока. Доплату можно поменять на экране «Как закрыть быстрее».",
+            if (byPayday) {
+                "Платёж кладите на счёт кредита сразу в день зарплаты. Досрочку оформляйте в приложении банка " +
+                    "с уменьшением срока. Доплату можно поменять на экране «Как закрыть быстрее»."
+            } else {
+                "Досрочку оформляйте в приложении банка с уменьшением срока. " +
+                    "Напишите, в какие числа приходит зарплата (например, «5 и 20»), — разложу платежи по зарплатам."
+            },
         )
     }.trim()
 

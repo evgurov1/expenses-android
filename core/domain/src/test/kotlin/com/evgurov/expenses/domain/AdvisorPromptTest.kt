@@ -67,6 +67,11 @@ class AdvisorPromptTest {
         assertEquals(listOf(5, 20), PaydaySchedule.paydaysFromText(q))
         assertEquals(listOf(10, 25), PaydaySchedule.paydaysFromText("аванс 25-го, зарплата 10 числа"))
         assertEquals(emptyList<Int>(), PaydaySchedule.paydaysFromText("зарплата 25 000"))
+        assertEquals(listOf(5, 20), PaydaySchedule.paydaysFromText("зарплата 5 и 20"))
+        assertEquals(emptyList<Int>(), PaydaySchedule.paydaysFromText("5 и20"))
+        assertEquals(listOf(5, 20), PaydaySchedule.paydaysFromText("5 и20", expectingDays = true))
+        assertEquals(emptyList<Int>(), PaydaySchedule.paydaysFromText("закрою за 13 месяцев", expectingDays = true))
+        assertEquals(emptyList<Int>(), PaydaySchedule.paydaysFromText("80 000", expectingDays = true))
     }
 
     @Test
@@ -91,5 +96,10 @@ class AdvisorPromptTest {
         val text = PaydaySchedule.describe(schedule, listOf(5, 20), loans, 10_000_00, advice.order.first(), today)
         assertTrue(text.startsWith("График по зарплатам 5 и 20 числа"))
         assertTrue("5 ноября, с зарплаты" in text)
+        val byDue = PaydaySchedule.build(advice.plan, emptyList(), today)
+        assertEquals(LocalDate.of(2026, 11, 2), byDue.first().date)
+        val plain = PaydaySchedule.describe(byDue, emptyList(), loans, 10_000_00, advice.order.first(), today)
+        assertTrue(plain.startsWith("График платежей на 3 месяца"))
+        assertTrue("2 ноября — " in plain)
     }
 }
