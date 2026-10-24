@@ -131,8 +131,10 @@ private fun formFromImport(draft: ImportDraft): LoanForm {
         if (loan.bank.isNotBlank()) add("банк ${loan.bank}")
         parsed.contractNumber?.let { add("договор № $it") }
         parsed.principal?.let { add("сумма ${Money.format(it)}") }
-        if (parsed.principal == null && parsed.remainingPayments != null && parsed.currentDebt != null) {
-            add("осталось ${Money.format(parsed.currentDebt)} за ${parsed.remainingPayments} платежей (в поле суммы — текущий остаток)")
+        val debt = parsed.currentDebt
+        val remaining = parsed.remainingPayments
+        if (parsed.principal == null && remaining != null && debt != null) {
+            add("осталось ${Money.format(debt)} за $remaining платежей (в поле суммы — текущий остаток)")
         }
         parsed.nextPaymentDate?.let { add("ближайший платёж ${it.shortTitle()}") }
         loan.bankSchedule.lastOrNull()?.let {
