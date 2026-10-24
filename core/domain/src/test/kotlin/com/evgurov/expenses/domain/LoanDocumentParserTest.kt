@@ -167,6 +167,55 @@ class LoanDocumentParserTest {
     }
 
     @Test
+    fun `tbank app loan screen from OCR`() {
+        // Вывод Tesseract (rus, fast) по скриншоту экрана кредита в приложении Т-Банка.
+        val text = """
+            11:30 ${'$'} 4${'$'} © 100)
+
+            < Кредит наличными
+
+            Осталось выплатить
+
+            197 884,71Р
+
+            Ещё 58 платежей График >
+            =:
+
+            2 ноября спишем с основного счёта
+
+            7844Р
+
+            7; Пополните счёт заранее — автоматически спишем
+            платёж до 20:00 мск
+
+            Баланс основного счёта 94,35 Р
+
+            © Погасить кредит
+        """.trimIndent()
+        val parsed = LoanDocumentParser.parse(text, today = LocalDate.of(2026, 10, 24))
+        assertEquals(197_884_71L, parsed.currentDebt)
+        assertEquals(7_844_00L, parsed.regularPayment)
+        assertEquals(58, parsed.remainingPayments)
+        assertEquals(LocalDate.of(2026, 11, 2), parsed.nextPaymentDate)
+        assertTrue(parsed.rateIsEstimated)
+        assertEquals(41.0, parsed.annualRate!!, 3.0)
+
+        val loan = parsed.toLoan(LoanSource.PHOTO)
+        assertEquals(197_884_71L, loan.principal)
+        assertEquals(58, loan.termMonths)
+        assertEquals(LocalDate.of(2026, 10, 2), loan.issueDate)
+        assertEquals(LocalDate.of(2031, 8, 2), LoanMath.endDate(loan))
+        assertEquals(7_844_00L, LoanMath.paymentInMonth(loan, YearMonth.of(2026, 11)))
+    }
+
+    @Test
+    fun `next payment date in january rolls to next year`() {
+        val parsed = LoanDocumentParser.parse("15 января спишем\n12 000 ₽", today = LocalDate.of(2026, 12, 20))
+        assertEquals(LocalDate.of(2027, 1, 15), parsed.nextPaymentDate)
+        assertEquals(12_000_00L, parsed.regularPayment)
+    }
+
+    @Test
     fun `credit card screenshot becomes a card`() {
         val parsed = LoanDocumentParser.parse("Альфа-Банк\nКредитный лимит 150 000 ₽\nТекущая задолженность 32 000 ₽")
         assertTrue(parsed.isCard)

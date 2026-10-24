@@ -33,6 +33,10 @@ data class ParsedLoan(
     val termMonths: Int? = null,
     val currentDebt: Kopecks? = null,
     val creditLimit: Kopecks? = null,
+    /** «Ещё 58 платежей» на экране кредита в приложении банка. */
+    val remainingPayments: Int? = null,
+    /** «2 ноября спишем …» — дата ближайшего платежа. */
+    val nextPaymentDate: LocalDate? = null,
     val payments: List<ParsedPayment> = emptyList(),
 ) {
     val isCard: Boolean get() = creditLimit != null && payments.isEmpty()
@@ -70,6 +74,21 @@ data class ParsedLoan(
                 note = contractNumber?.let { "Договор № $it" }.orEmpty(),
             )
         }
+        // Экран кредита без графика: считаем кредит заново от текущего остатка на оставшиеся платежи.
+        if (schedule.isEmpty() && principal == null && currentDebt != null && remainingPayments != null) {
+            return Loan(
+                type = LoanType.CONSUMER,
+                name = listOf("Кредит", bankName).filter { it.isNotBlank() }.joinToString(" "),
+                bank = bankName,
+                principal = currentDebt,
+                annualRate = annualRate ?: 0.0,
+                termMonths = remainingPayments,
+                issueDate = nextPaymentDate?.minusMonths(1) ?: LocalDate.now(),
+                monthlyPayment = regularPayment,
+                source = source,
+                note = contractNumber?.let { "Договор № $it" }.orEmpty(),
+            )
+        }
         return Loan(
             type = LoanType.CONSUMER,
             name = listOf("Кредит", bankName).filter { it.isNotBlank() }.joinToString(" "),
@@ -99,6 +118,15 @@ object LoanDocumentParser {
 
     private val dateFormat = DateTimeFormatter.ofPattern("dd.MM.yyyy")
 
+    /** Сумма после подписи: на той же строке или в начале одной из следующих (так раскладывает OCR экраны приложений). */
+    private const val AMOUNT_AFTER_LABEL =
+        """[^\n]{0,60}?(?:\n\s*){0,2}(?<![\d.,])(\d{1,3}(?: \d{3})+(?:[.,]\d{2})?|\d+[.,]\d{2}|\d+(?=\s*(?:₽|руб|р(?!\p{L}))))(?![\d.,])"""
+
+    private val monthsGenitive = listOf(
+        "января", "февраля", "марта", "апреля", "мая", "июня",
+        "июля", "августа", "сентября", "октября", "ноября", "декабря",
+    )
+
     private val banks = listOf(
         "ТБанк" to listOf("тбанк", "т-банк", "тинькофф", "tbank", "tinkoff"),
         "Сбербанк" to listOf("сбербанк", "сбер ", "пао сбер"),
@@ -118,7 +146,7 @@ object LoanDocumentParser {
         "Яндекс Банк" to listOf("яндекс банк"),
     )
 
-    fun parse(text: String): ParsedLoan {
+    fun parse(text: String, today: LocalDate = LocalDate.now()): ParsedLoan {
         val normalized = text.replace(' ', ' ').replace(' ', ' ')
         // Регэкспы работают по тексту в нижнем регистре: так не нужны флаги Unicode,
         // которые по-разному поддерживаются в JVM и в Android (ICU).
@@ -127,6 +155,7 @@ object LoanDocumentParser {
         val numbered = payments.filter { !it.isEarly }
         val schedule = numbered.map { it.payment }
         val regular = labeledAmount(lower, "(?:ежемесячн\\p{L}*|регулярн\\p{L}*)\\s+плат[её]ж\\p{L}*")
+            ?: nextPayment(lower, today)?.second
             ?: schedule.filter { it > 0 }.let { list ->
                 list.groupingBy { it }.eachCount().maxWithOrNull(compareBy({ it.value }, { it.key }))?.key
             }
@@ -136,7 +165,21 @@ object LoanDocumentParser {
             .find(lower)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()
             ?: Regex("""ставк\p{L}*[^\d\n]{0,40}(\d{1,3}(?:[.,]\d{1,3})?)\s*%""")
                 .find(lower)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()
-        val estimatedRate = if (statedRate == null) estimateRate(payments) else null
+        val currentDebt = labeledAmount(
+            lower,
+            "(?:остаток\\s+(?:основного\\s+)?(?:долга|задолженности)|осталось\\s+(?:выплатить|погасить)|текущ\\p{L}*\\s+задолженност\\p{L}*)",
+        )
+        val remaining = Regex("""(?:ещё|еще|осталось)\s+(\d{1,3})\s+плат[её]ж""")
+            .find(lower)?.groupValues?.get(1)?.toIntOrNull()
+        val estimatedRate = if (statedRate == null) {
+            estimateRate(payments) ?: if (numbered.isEmpty() && currentDebt != null && remaining != null && regular != null) {
+                annuityRate(currentDebt, regular, remaining)
+            } else {
+                null
+            }
+        } else {
+            null
+        }
         return ParsedLoan(
             bank = detectBank(lower),
             contractNumber = Regex("""(?:номер\s+договора|договор\p{L}*[^\n№]{0,60}№|№\s*договора)\s*:?\s*([\p{L}\d/-]*\d[\p{L}\d/-]*)""")
@@ -150,11 +193,10 @@ object LoanDocumentParser {
             termMonths = numbered.mapNotNull { it.number }.maxOrNull()
                 ?: Regex("""срок\p{L}*[^\d\n]{0,30}(\d{1,3})\s*(?:мес|month)""")
                     .find(lower)?.groupValues?.get(1)?.toIntOrNull(),
-            currentDebt = labeledAmount(
-                lower,
-                "(?:остаток\\s+(?:основного\\s+)?(?:долга|задолженности)|осталось\\s+(?:выплатить|погасить)|текущ\\p{L}*\\s+задолженност\\p{L}*)",
-            ),
+            currentDebt = currentDebt,
             creditLimit = labeledAmount(lower, "(?:кредитн\\p{L}*\\s+)?лимит\\p{L}*"),
+            remainingPayments = remaining,
+            nextPaymentDate = nextPayment(lower, today)?.first,
             payments = payments,
         )
     }
@@ -197,8 +239,34 @@ object LoanDocumentParser {
     }
 
     private fun labeledAmount(text: String, label: String): Kopecks? =
-        Regex("""$label[^\n]{0,60}?(?<![\d.,])(\d{1,3}(?: \d{3})+(?:[.,]\d{2})?|\d+[.,]\d{2})(?![\d.,])""")
-            .find(text)?.groupValues?.get(1)?.let(::parseAmount)
+        Regex(label + AMOUNT_AFTER_LABEL).find(text)?.groupValues?.get(1)?.let(::parseAmount)
+
+    /** «2 ноября спишем … 7 844 ₽»: дата ближайшего платежа (год — ближайший подходящий) и сумма. */
+    private fun nextPayment(lower: String, today: LocalDate): Pair<LocalDate, Kopecks>? {
+        val match = Regex(
+            """(?<!\d)(\d{1,2})\s+(""" + monthsGenitive.joinToString("|") +
+                """)\s+(?:спишем|спишется|списание|плат[её]ж|оплат\p{L}*)""" + AMOUNT_AFTER_LABEL,
+        ).find(lower) ?: return null
+        val month = monthsGenitive.indexOf(match.groupValues[2]) + 1
+        val day = match.groupValues[1].toInt()
+        val thisYear = runCatching { LocalDate.of(today.year, month, day) }.getOrNull() ?: return null
+        val date = if (thisYear.isBefore(today.minusDays(15))) thisYear.plusYears(1) else thisYear
+        return date to parseAmount(match.groupValues[3])
+    }
+
+    /** Годовая ставка аннуитета по остатку, платежу и числу платежей (бисекция по месячной ставке). */
+    private fun annuityRate(debt: Kopecks, payment: Kopecks, count: Int): Double? {
+        if (debt <= 0 || payment <= 0 || count <= 0 || payment.toDouble() * count <= debt) return null
+        fun paymentAt(r: Double) = debt * r / (1 - Math.pow(1 + r, -count.toDouble()))
+        var lo = 1e-9
+        var hi = 0.2
+        if (paymentAt(hi) < payment) return null
+        repeat(100) {
+            val mid = (lo + hi) / 2
+            if (paymentAt(mid) < payment) lo = mid else hi = mid
+        }
+        return Math.round(lo * 12 * 1000) / 10.0
+    }
 
     private fun parseAmount(value: String): Kopecks {
         val clean = value.replace(" ", "").replace(',', '.')

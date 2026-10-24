@@ -131,12 +131,16 @@ private fun formFromImport(draft: ImportDraft): LoanForm {
         if (loan.bank.isNotBlank()) add("банк ${loan.bank}")
         parsed.contractNumber?.let { add("договор № $it") }
         parsed.principal?.let { add("сумма ${Money.format(it)}") }
+        if (parsed.principal == null && parsed.remainingPayments != null && parsed.currentDebt != null) {
+            add("осталось ${Money.format(parsed.currentDebt)} за ${parsed.remainingPayments} платежей (в поле суммы — текущий остаток)")
+        }
+        parsed.nextPaymentDate?.let { add("ближайший платёж ${it.shortTitle()}") }
         loan.bankSchedule.lastOrNull()?.let {
             add("график: ${loan.bankSchedule.size} платежей до ${it.dueDate.shortTitle()}")
         }
         if (parsed.earlyPayments.isNotEmpty()) add("досрочных платежей: ${parsed.earlyPayments.size}")
         parsed.annualRate?.let {
-            add(if (parsed.rateIsEstimated) "ставка ≈${formatRate(it)} (оценка по графику, сверьте с договором)" else "ставка ${formatRate(it)}")
+            add(if (parsed.rateIsEstimated) "ставка ≈${formatRate(it)} (оценка, сверьте с договором)" else "ставка ${formatRate(it)}")
         }
     }
     val note = "Распознано из $from: " + found.joinToString(", ").ifBlank { "немного данных" } +
