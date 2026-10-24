@@ -18,6 +18,23 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+
+        // Модель работает только на 64-битных ARM-телефонах.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
+        externalNativeBuild {
+            cmake {
+                arguments += "-DCMAKE_BUILD_TYPE=Release"
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     // Общий debug-ключ в репозитории: иначе каждая сборка в CI подписана новым ключом,
@@ -58,8 +75,6 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
-        // ML Kit GenAI собран Kotlin 2.2; разрешаем читать его метаданные, не обновляя весь проект.
-        freeCompilerArgs.add("-Xskip-metadata-version-check")
     }
 }
 
@@ -93,12 +108,6 @@ dependencies {
 
     implementation(libs.pdfbox.android)
     implementation(libs.tesseract4android)
-    implementation(libs.mlkit.genai.prompt)
 
     testImplementation(libs.junit)
-}
-
-// KSP компилирует те же зависимости отдельной задачей — ей нужен тот же флаг.
-tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask<*>>().configureEach {
-    compilerOptions.freeCompilerArgs.add("-Xskip-metadata-version-check")
 }

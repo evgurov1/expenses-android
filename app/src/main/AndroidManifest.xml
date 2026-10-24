@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- Только для одной загрузки файла модели помощника. Данные пользователя никуда не отправляются. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <application
         android:name=".ExpensesApplication"
         android:allowBackup="false"

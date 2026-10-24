@@ -4,3 +4,7 @@
 
 # Tesseract вызывается из нативного кода.
 -keep class com.googlecode.tesseract.android.** { *; }
+
+# llama.cpp вызывает onText из нативного кода.
+-keep class com.evgurov.expenses.assistant.LlamaNative { *; }
+-keep interface com.evgurov.expenses.assistant.TextCallback { *; }

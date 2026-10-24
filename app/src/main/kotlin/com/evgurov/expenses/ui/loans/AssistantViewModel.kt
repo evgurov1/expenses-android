@@ -6,18 +6,16 @@ import androidx.lifecycle.viewModelScope
 import com.evgurov.expenses.assistant.AssistantAvailability
 import com.evgurov.expenses.assistant.LocalAssistant
 import com.evgurov.expenses.assistant.ModelDownload
-import com.evgurov.expenses.domain.model.Kopecks
+import com.evgurov.expenses.domain.assistant.AgentMessage
+import com.evgurov.expenses.domain.assistant.AgentPrompt
+import com.evgurov.expenses.domain.assistant.LoanTools
+import com.evgurov.expenses.domain.assistant.Role
 import com.evgurov.expenses.domain.repository.IncomeRepository
 import com.evgurov.expenses.domain.repository.LoanRepository
 import com.evgurov.expenses.domain.repository.TransactionRepository
-import com.evgurov.expenses.domain.usecase.AdvisorPrompt
-import com.evgurov.expenses.domain.usecase.ChatTurn
-import com.evgurov.expenses.domain.usecase.PaydaySchedule
-import com.evgurov.expenses.domain.usecase.PayoffPlanner
 import com.evgurov.expenses.domain.usecase.monthlyIncome
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,12 +26,18 @@ import java.time.LocalDate
 import java.time.YearMonth
 import javax.inject.Inject
 
-data class ChatMessage(val text: String, val fromUser: Boolean, val pending: Boolean = false)
+data class ChatMessage(
+    val text: String,
+    val fromUser: Boolean,
+    val pending: Boolean = false,
+    /** Что помощник делает сейчас: «Составляю график…». */
+    val status: String? = null,
+)
 
 data class AssistantUiState(
     val availability: AssistantAvailability = AssistantAvailability.CHECKING,
     val downloadProgress: Float? = null,
-    val downloadError: String? = null,
+    val error: String? = null,
     val messages: List<ChatMessage> = emptyList(),
     val draft: String = "",
     val busy: Boolean = false,
@@ -48,125 +52,149 @@ class AssistantViewModel @Inject constructor(
     @ApplicationContext context: Context,
 ) : ViewModel() {
 
-    private val prefs = context.getSharedPreferences("assistant", Context.MODE_PRIVATE)
-
     private val _state = MutableStateFlow(AssistantUiState())
     val state: StateFlow<AssistantUiState> = _state.asStateFlow()
 
-    private val history = mutableListOf<ChatTurn>()
+    private val prefs = context.getSharedPreferences("assistant", Context.MODE_PRIVATE)
 
-    /** Мы спросили дни зарплаты: следующий короткий ответ вроде «5 и 20» — это они. */
-    private var awaitingPaydays = false
-    private var job: Job? = null
-
-    /** Доплата в месяц, от которой считаются советы, если в вопросе нет своей суммы. */
-    var extraMonthly: Kopecks = 10_000_00
+    /** Переписка для модели: вопросы, ответы, вызовы инструментов и их результаты. */
+    private val history = mutableListOf<AgentMessage>()
 
     init {
-        viewModelScope.launch { _state.update { it.copy(availability = assistant.availability()) } }
+        when (val availability = assistant.availability()) {
+            AssistantAvailability.LOADING, AssistantAvailability.READY -> loadModel()
+            AssistantAvailability.DOWNLOADING -> download()
+            else -> _state.update { it.copy(availability = availability) }
+        }
     }
 
     fun editDraft(text: String) = _state.update { it.copy(draft = text) }
 
     fun download() {
-        _state.update { it.copy(availability = AssistantAvailability.DOWNLOADING, downloadError = null, downloadProgress = 0f) }
+        _state.update { it.copy(availability = AssistantAvailability.DOWNLOADING, error = null, downloadProgress = 0f) }
         viewModelScope.launch {
             assistant.download().collect { event ->
                 when (event) {
                     is ModelDownload.Progress -> _state.update {
                         it.copy(downloadProgress = if (event.totalBytes > 0) event.downloadedBytes.toFloat() / event.totalBytes else null)
                     }
-                    ModelDownload.Done -> _state.update {
-                        it.copy(availability = AssistantAvailability.READY, downloadProgress = null)
-                    }
+                    ModelDownload.Done -> loadModel()
                     is ModelDownload.Failed -> _state.update {
-                        it.copy(availability = AssistantAvailability.DOWNLOADABLE, downloadError = event.message, downloadProgress = null)
+                        it.copy(availability = AssistantAvailability.DOWNLOADABLE, error = event.message, downloadProgress = null)
                     }
                 }
+            }
+        }
+    }
+
+    private fun loadModel() {
+        _state.update { it.copy(availability = AssistantAvailability.LOADING, downloadProgress = null) }
+        viewModelScope.launch {
+            val ok = runCatching { assistant.load() }.getOrDefault(false)
+            if (!ok) {
+                _state.update { it.copy(availability = AssistantAvailability.UNAVAILABLE, error = "Не удалось загрузить модель в память.") }
+                return@launch
+            }
+            _state.update { it.copy(availability = AssistantAvailability.READY) }
+            // Пока пользователь читает экран, заранее считаем системный запрос — первый ответ придёт быстрее.
+            runCatching {
+                val system = AgentPrompt.system(tools().facts())
+                assistant.generate("<|im_start|>system\n$system${AgentPrompt.END}\n", maxTokens = 0).collect {}
             }
         }
     }
 
     fun ask(question: String = _state.value.draft) {
         val q = question.trim()
-        if (q.isEmpty() || _state.value.busy) return
+        if (q.isEmpty() || _state.value.busy || _state.value.availability != AssistantAvailability.READY) return
         _state.update {
             it.copy(
                 draft = "",
                 busy = true,
-                messages = it.messages + ChatMessage(q, fromUser = true) + ChatMessage("", fromUser = false, pending = true),
+                messages = it.messages + ChatMessage(q, fromUser = true) +
+                    ChatMessage("", fromUser = false, pending = true, status = "Думаю…"),
             )
         }
-        job = viewModelScope.launch {
-            val days = PaydaySchedule.paydaysFromText(q, expectingDays = awaitingPaydays)
-            if (AdvisorPrompt.asksForSchedule(q) || days.isNotEmpty()) {
-                // График считаем сами: модель путает даты и суммы, а здесь нужна точность до рубля.
-                val text = runCatching { scheduleAnswer(q) }.getOrElse { e -> "Не получилось составить график: ${e.message}" }
-                history += ChatTurn(q, text)
-                finish(text)
-                return@launch
-            }
-            awaitingPaydays = false
-            val prompt = runCatching { buildPrompt(q) }.getOrElse { e ->
-                finish("Не получилось собрать данные по кредитам: ${e.message}")
-                return@launch
-            }
-            val answer = StringBuilder()
-            runCatching {
-                assistant.answer(prompt).collect { chunk ->
-                    // Поток может отдавать и новые куски, и весь текст целиком — поддерживаем оба варианта.
-                    if (answer.isNotEmpty() && chunk.startsWith(answer)) answer.setLength(0)
-                    answer.append(chunk)
-                    replaceLast(answer.toString().trim(), pending = true)
+        viewModelScope.launch {
+            val answer = runCatching { runAgent(q) }.getOrElse { e ->
+                if (e is LocalAssistant.PromptTooLong) {
+                    history.clear()
+                    "Разговор стал слишком длинным, я начал его заново. Повторите, пожалуйста, вопрос."
+                } else {
+                    "Не получилось ответить: ${e.message ?: e.javaClass.simpleName}"
                 }
-            }.onFailure { e ->
-                finish("Модель не ответила: ${e.message ?: e.javaClass.simpleName}")
-                return@launch
             }
-            val text = answer.toString().trim().ifEmpty { "Не нашёл, что ответить. Попробуйте переформулировать вопрос." }
-            history += ChatTurn(q, text)
-            finish(text)
+            replaceLast(answer.ifBlank { "Не нашёл, что ответить. Попробуйте переформулировать вопрос." }, pending = false)
+            _state.update { it.copy(busy = false) }
         }
     }
 
-    private suspend fun scheduleAnswer(question: String): String {
-        PaydaySchedule.paydaysFromText(question, expectingDays = awaitingPaydays).takeIf { it.isNotEmpty() }?.let { days ->
-            prefs.edit().putString(PAYDAYS, days.joinToString(",")).apply()
+    /**
+     * Цикл агента: модель либо отвечает текстом, либо вызывает инструмент.
+     * Инструмент считает приложение, результат возвращается модели, и она продолжает.
+     */
+    private suspend fun runAgent(question: String): String {
+        val tools = tools()
+        val system = AgentPrompt.system(tools.facts())
+        val turn = mutableListOf(AgentMessage(Role.USER, question))
+        var lastToolText = ""
+        repeat(MAX_STEPS) {
+            val output = StringBuilder()
+            assistant.generate(AgentPrompt.render(system, history.takeLast(HISTORY) + turn)).collect { chunk ->
+                output.append(chunk)
+                val text = output.toString().trimStart()
+                // Вызов инструмента пользователю не показываем — только то, что модель пишет человеку.
+                if (!text.startsWith("<") && !"<tool_call>".startsWith(text)) {
+                    replaceLast(AgentPrompt.visibleText(text), pending = true)
+                }
+            }
+            val raw = output.toString().trim()
+            val call = AgentPrompt.parseToolCall(raw)
+            if (call == null) {
+                turn += AgentMessage(Role.ASSISTANT, raw)
+                history += turn
+                return AgentPrompt.visibleText(raw)
+            }
+            replaceLast("", pending = true, status = statusFor(call.name))
+            val result = tools.execute(call)
+            result.paydays?.let { prefs.edit().putString(KEY_PAYDAYS, it.joinToString(",")).apply() }
+            turn += AgentMessage(Role.ASSISTANT, raw)
+            turn += AgentMessage(Role.TOOL, result.text)
+            lastToolText = result.text
+            if (result.showToUser) {
+                // График показываем как есть: пересказ длинного списка медленный и может исказить цифры.
+                turn += AgentMessage(Role.ASSISTANT, "Показал график пользователю.")
+                history += turn
+                return result.text
+            }
         }
-        val paydays = prefs.getString(PAYDAYS, null).orEmpty().split(",").mapNotNull { it.trim().toIntOrNull() }
-        // Без дней зарплаты сразу показываем график по датам списания и спрашиваем дни.
-        awaitingPaydays = paydays.isEmpty()
-        val today = LocalDate.now()
-        val loanList = loans.observeAll().first()
-        val extra = AdvisorPrompt.extraFromQuestion(question) ?: extraMonthly
-        val advice = PayoffPlanner.advise(loanList, extra, today = today)
-        val schedule = PaydaySchedule.build(advice.plan, paydays, today)
-        if (schedule.isEmpty()) return "Нет действующих кредитов — расписывать нечего."
-        return PaydaySchedule.describe(schedule, paydays, loanList, extra, advice.order.firstOrNull(), today)
+        history += turn
+        return lastToolText
     }
 
-    private suspend fun buildPrompt(question: String): String {
+    private suspend fun tools(): LoanTools {
         val today = LocalDate.now()
         val loanList = loans.observeAll().first()
         val income = monthlyIncome(incomes.observeAll().first(), transactions.observeAll().first(), YearMonth.from(today)).amount
-        val advice = PayoffPlanner.advise(loanList, extraMonthly, income = income, today = today)
-        val whatIf = AdvisorPrompt.extraFromQuestion(question)
-            ?.takeIf { it != extraMonthly }
-            ?.let { it to PayoffPlanner.advise(loanList, it, income = income, today = today) }
-        val facts = AdvisorPrompt.facts(loanList, advice, extraMonthly, income, today, whatIf)
-        return AdvisorPrompt.build(facts, history, question)
+        val paydays = prefs.getString(KEY_PAYDAYS, null).orEmpty().split(",").mapNotNull { it.trim().toIntOrNull() }
+        return LoanTools(loanList, income, paydays, today)
+    }
+
+    private fun statusFor(tool: String) = when (tool) {
+        "payoff_plan" -> "Считаю план погашения…"
+        "compare_strategies" -> "Сравниваю стратегии…"
+        "payment_schedule" -> "Составляю график…"
+        "save_paydays" -> "Запоминаю дни зарплаты…"
+        else -> "Считаю…"
+    }
+
+    private fun replaceLast(text: String, pending: Boolean, status: String? = null) = _state.update {
+        it.copy(messages = it.messages.dropLast(1) + ChatMessage(text, fromUser = false, pending = pending, status = status))
     }
 
     private companion object {
-        const val PAYDAYS = "paydays"
-    }
-
-    private fun replaceLast(text: String, pending: Boolean) = _state.update {
-        it.copy(messages = it.messages.dropLast(1) + ChatMessage(text, fromUser = false, pending = pending))
-    }
-
-    private fun finish(text: String) {
-        replaceLast(text, pending = false)
-        _state.update { it.copy(busy = false) }
+        const val KEY_PAYDAYS = "paydays"
+        const val MAX_STEPS = 4
+        const val HISTORY = 8
     }
 }

@@ -53,7 +53,7 @@ private val suggestions = listOf(
     "Что если доплачивать 15 000 в месяц?",
     "Стоит ли рефинансировать?",
     "Когда я закрою все кредиты?",
-    "График платежей по моим зарплатам",
+    "Построй график платежей",
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -126,8 +126,8 @@ fun AssistantScreen(
 private fun Header(state: AssistantUiState, onDownload: () -> Unit, onAsk: (String) -> Unit) {
     AppCard {
         Text(
-            "Отвечает модель Gemini Nano прямо в телефоне: вопросы и данные о кредитах никуда не отправляются. " +
-                "Цифры берутся из расчётов приложения.",
+            "Отвечает модель Qwen3 4B прямо в телефоне: вопросы и данные о кредитах никуда не отправляются. " +
+                "Помощник сам запускает расчёты приложения — график, досрочку, сравнение стратегий.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -141,11 +141,12 @@ private fun Header(state: AssistantUiState, onDownload: () -> Unit, onAsk: (Stri
             }
             AssistantAvailability.DOWNLOADABLE -> {
                 Text(
-                    "Модель нужно один раз скачать (это делает система Android, лучше по Wi-Fi). Дальше она работает без интернета.",
+                    "Модель нужно один раз скачать: 2,5 ГБ с сайта Hugging Face, лучше по Wi-Fi. " +
+                        "Скачивается только сам файл модели, ваши данные не передаются. Дальше всё работает без интернета.",
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 12.dp),
                 )
-                state.downloadError?.let {
+                state.error?.let {
                     Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
                 }
                 Button(onClick = onDownload, modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(48.dp)) {
@@ -165,8 +166,15 @@ private fun Header(state: AssistantUiState, onDownload: () -> Unit, onAsk: (Stri
                     LinearProgressIndicator(strokeCap = StrokeCap.Round, modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
                 }
             }
+            AssistantAvailability.LOADING -> Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(top = 16.dp),
+            ) {
+                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                Text("Загружаю модель в память…", modifier = Modifier.padding(start = 12.dp))
+            }
             AssistantAvailability.UNAVAILABLE -> Text(
-                "На этом телефоне встроенная модель недоступна. Советы и план погашения есть на экране «Как закрыть быстрее».",
+                (state.error ?: "Модель недоступна.") + " Советы и план погашения есть на экране «Как закрыть быстрее».",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.error,
                 modifier = Modifier.padding(top = 12.dp),
@@ -194,7 +202,17 @@ private fun Bubble(message: ChatMessage) {
                 .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
             if (message.pending && message.text.isEmpty()) {
-                CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    message.status?.let {
+                        Text(
+                            it,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 10.dp),
+                        )
+                    }
+                }
             } else {
                 Text(
                     message.text,
