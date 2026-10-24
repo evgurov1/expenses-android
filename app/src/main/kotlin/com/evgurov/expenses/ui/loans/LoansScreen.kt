@@ -25,8 +25,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -79,32 +80,10 @@ fun LoansScreen(
         topBar = {
             TopAppBar(title = { Text("Кредиты", style = MaterialTheme.typography.headlineMedium) })
         },
-        floatingActionButton = {
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                ExtendedFloatingActionButton(
-                    onClick = onAddLoan,
-                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                    text = { Text("Вручную") },
-                    shape = CircleShape,
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLowest,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    elevation = FloatingActionButtonDefaults.elevation(2.dp, 2.dp, 2.dp, 2.dp),
-                )
-                ExtendedFloatingActionButton(
-                    onClick = onImportLoan,
-                    icon = { Icon(Icons.Filled.UploadFile, contentDescription = null) },
-                    text = { Text("Загрузить документы") },
-                    shape = CircleShape,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                    elevation = FloatingActionButtonDefaults.elevation(4.dp, 4.dp, 4.dp, 4.dp),
-                )
-            }
-        },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 168.dp),
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item { BurdenCard(state) }
@@ -171,7 +150,15 @@ fun LoansScreen(
                 }
             }
 
-            item { SectionTitle("Мои кредиты", Modifier.padding(top = 12.dp, start = 4.dp)) }
+            item {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp, start = 4.dp),
+                ) {
+                    SectionTitle("Мои кредиты", Modifier.weight(1f))
+                    AddLoanMenu(onImport = onImportLoan, onManual = onAddLoan)
+                }
+            }
             if (!state.loading && state.loans.isEmpty()) {
                 item {
                     AppCard {
@@ -441,4 +428,33 @@ private fun PaydaysDialog(
         confirmButton = { TextButton(onClick = { onConfirm(days) }) { Text("Сохранить") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } },
     )
+}
+
+/** «+» у заголовка «Мои кредиты»: загрузить документы или добавить вручную. */
+@Composable
+private fun AddLoanMenu(onImport: () -> Unit, onManual: () -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Filled.Add, contentDescription = "Добавить кредит")
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text("Загрузить документы") },
+                leadingIcon = { Icon(Icons.Filled.UploadFile, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onImport()
+                },
+            )
+            DropdownMenuItem(
+                text = { Text("Вручную") },
+                leadingIcon = { Icon(Icons.Filled.Edit, contentDescription = null) },
+                onClick = {
+                    open = false
+                    onManual()
+                },
+            )
+        }
+    }
 }
