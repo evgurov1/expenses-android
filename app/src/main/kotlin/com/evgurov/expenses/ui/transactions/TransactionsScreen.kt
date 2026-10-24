@@ -48,7 +48,11 @@ import com.evgurov.expenses.domain.usecase.PeriodSummary
 import com.evgurov.expenses.ui.components.ConfirmDeleteDialog
 import com.evgurov.expenses.ui.components.SignedAmount
 import com.evgurov.expenses.ui.components.dayTitle
+import com.evgurov.expenses.ui.components.PillChip
+import com.evgurov.expenses.ui.components.RussianLocale
 import com.evgurov.expenses.ui.components.title
+import java.time.YearMonth
+import java.time.format.DateTimeFormatter
 import com.evgurov.expenses.ui.theme.IncomeColor
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -76,15 +80,15 @@ fun TransactionsScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { Text(state.month.title()) },
+                title = { Text(state.period.title()) },
                 navigationIcon = {
-                    IconButton(onClick = viewModel::previousMonth) {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Предыдущий месяц")
+                    IconButton(onClick = viewModel::previousPeriod) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, contentDescription = "Предыдущий период")
                     }
                 },
                 actions = {
-                    IconButton(onClick = viewModel::nextMonth) {
-                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Следующий месяц")
+                    IconButton(onClick = viewModel::nextPeriod) {
+                        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = "Следующий период")
                     }
                 },
             )
@@ -99,7 +103,27 @@ fun TransactionsScreen(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(bottom = 88.dp),
         ) {
+            item {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                ) {
+                    PeriodMode.entries.forEach { mode ->
+                        PillChip(state.period.mode == mode, { viewModel.setPeriodMode(mode) }, mode.label)
+                    }
+                }
+            }
             item { SummaryCard(state.summary) }
+            item {
+                CategoryChart(
+                    kind = state.chartKind,
+                    slices = state.slices,
+                    selected = state.selected,
+                    onKind = viewModel::setChartKind,
+                    onSlice = viewModel::toggleSlice,
+                    modifier = Modifier.padding(bottom = 16.dp),
+                )
+            }
             item { BankCard(
                     enabled = bankEnabled,
                     skipped = skipped,
@@ -111,7 +135,7 @@ fun TransactionsScreen(
                 item {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
                         Text(
-                            "В этом месяце операций нет.\nНажмите «+», чтобы добавить.",
+                            "За этот период операций нет.\nНажмите «+», чтобы добавить.",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
@@ -192,4 +216,13 @@ private fun SummaryValue(label: String, value: String, color: androidx.compose.u
         Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(value, style = MaterialTheme.typography.titleMedium, color = color)
     }
+}
+
+private val weekDay = DateTimeFormatter.ofPattern("d MMMM", RussianLocale)
+
+/** «Октябрь», «19 – 25 октября», «2026». */
+private fun Period.title(): String = when (mode) {
+    PeriodMode.WEEK -> if (from.month == to.month) "${from.dayOfMonth} – ${to.format(weekDay)}" else "${from.format(weekDay)} – ${to.format(weekDay)}"
+    PeriodMode.MONTH -> YearMonth.from(anchor).title()
+    PeriodMode.YEAR -> anchor.year.toString()
 }

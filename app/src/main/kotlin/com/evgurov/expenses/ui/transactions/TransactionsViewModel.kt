@@ -26,6 +26,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import com.evgurov.expenses.domain.model.TransactionKind
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -39,12 +41,45 @@ data class TransactionRow(
 
 data class DayGroup(val date: LocalDate, val rows: List<TransactionRow>)
 
+enum class PeriodMode(val label: String) { WEEK("Неделя"), MONTH("Месяц"), YEAR("Год") }
+
+/** Выбранный период: неделя, месяц или год, в который попадает [anchor]. */
+data class Period(val mode: PeriodMode, val anchor: LocalDate) {
+    val from: LocalDate
+        get() = when (mode) {
+            PeriodMode.WEEK -> anchor.with(DayOfWeek.MONDAY)
+            PeriodMode.MONTH -> anchor.withDayOfMonth(1)
+            PeriodMode.YEAR -> anchor.withDayOfYear(1)
+        }
+    val to: LocalDate
+        get() = when (mode) {
+            PeriodMode.WEEK -> from.plusDays(6)
+            PeriodMode.MONTH -> YearMonth.from(anchor).atEndOfMonth()
+            PeriodMode.YEAR -> from.plusYears(1).minusDays(1)
+        }
+
+    fun shift(step: Long) = copy(
+        anchor = when (mode) {
+            PeriodMode.WEEK -> anchor.plusWeeks(step)
+            PeriodMode.MONTH -> anchor.plusMonths(step)
+            PeriodMode.YEAR -> anchor.plusYears(step)
+        },
+    )
+}
+
+/** Доля категории на диаграмме; «Остальное» объединяет несколько категорий. */
+data class CategorySlice(val name: String, val amount: Long, val categoryIds: Set<Long>, val isRest: Boolean = false)
+
 data class TransactionsUiState(
-    val month: YearMonth = YearMonth.now(),
+    val period: Period = Period(PeriodMode.MONTH, LocalDate.now()),
     val summary: PeriodSummary = PeriodSummary(0, 0),
     val days: List<DayGroup> = emptyList(),
     val loading: Boolean = true,
     val categories: List<Category> = emptyList(),
+    val chartKind: TransactionKind = TransactionKind.EXPENSE,
+    val slices: List<CategorySlice> = emptyList(),
+    /** Категория, по которой отфильтрован список, или null. */
+    val selected: CategorySlice? = null,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -57,34 +92,54 @@ class TransactionsViewModel @Inject constructor(
     accounts: AccountRepository,
 ) : ViewModel() {
 
-    private val month = MutableStateFlow(YearMonth.now())
+    private val period = MutableStateFlow(Period(PeriodMode.MONTH, LocalDate.now()))
+    private val chartKind = MutableStateFlow(TransactionKind.EXPENSE)
+    private val selectedName = MutableStateFlow<String?>(null)
 
-    val state: StateFlow<TransactionsUiState> = month
-        .flatMapLatest { m ->
+    val state: StateFlow<TransactionsUiState> = period
+        .flatMapLatest { p ->
             combine(
-                transactions.observeBetween(m.atDay(1), m.atEndOfMonth()),
+                transactions.observeBetween(p.from, p.to),
                 categories.observeAll(),
                 accounts.observeAll(),
-            ) { list, cats, accs ->
+                chartKind,
+                selectedName,
+            ) { list, cats, accs, kind, chosen ->
                 val categoryNames = cats.associate { it.id to it.name }
                 val accountNames = accs.associate { it.id to it.name }
+                val slices = categorySlices(list.filter { it.kind == kind }, categoryNames)
+                val selected = slices.firstOrNull { it.name == chosen }
+                val shown = if (selected == null) list else list.filter { it.kind == kind && it.categoryId in selected.categoryIds }
                 TransactionsUiState(
-                    month = m,
+                    period = p,
                     summary = summarize(list),
-                    days = list
+                    days = shown
                         .map { TransactionRow(it, categoryNames[it.categoryId].orEmpty(), accountNames[it.accountId].orEmpty()) }
                         .groupBy { it.transaction.date }
                         .map { (date, rows) -> DayGroup(date, rows) },
                     loading = false,
                     categories = cats,
+                    chartKind = kind,
+                    slices = slices,
+                    selected = selected,
                 )
             }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), TransactionsUiState())
 
-    fun previousMonth() = month.update { it.minusMonths(1) }
+    fun previousPeriod() = period.update { it.shift(-1) }
 
-    fun nextMonth() = month.update { it.plusMonths(1) }
+    fun nextPeriod() = period.update { it.shift(1) }
+
+    fun setPeriodMode(mode: PeriodMode) = period.update { it.copy(mode = mode) }
+
+    fun setChartKind(kind: TransactionKind) {
+        chartKind.value = kind
+        selectedName.value = null
+    }
+
+    /** Нажатие на категорию под диаграммой: показать только её операции, повторное — снять фильтр. */
+    fun toggleSlice(slice: CategorySlice) = selectedName.update { if (it == slice.name) null else slice.name }
 
     /** Уведомления банков, в которых не нашли операцию. */
     val skipped: StateFlow<List<SkippedNotification>> = importer.skipped
@@ -103,7 +158,7 @@ class TransactionsViewModel @Inject constructor(
                 val statement = StatementParser.parse(extractor.fromPdf(uri))
                     ?: return@runCatching "Не похоже на выписку по карте. Сейчас я понимаю выписку и справку о движении средств Т-Банка в PDF."
                 val result = importer.importStatement(statement)
-                month.value = YearMonth.from(result.to)
+                period.value = Period(PeriodMode.MONTH, result.to)
                 buildString {
                     append("Выписка ${statement.bank.accountName} с ${result.from.format(DAY)} по ${result.to.format(DAY)}: ")
                     append("добавлено операций — ${result.added}")
@@ -125,3 +180,17 @@ class TransactionsViewModel @Inject constructor(
 }
 
 private val DAY = DateTimeFormatter.ofPattern("dd.MM.yy")
+
+/** Сколько категорий показываем отдельно; остальные идут в «Остальное». */
+const val MAX_SLICES = 6
+
+/** Суммы по категориям по убыванию: первые [MAX_SLICES] отдельно, остальные одной долей. */
+fun categorySlices(list: List<Transaction>, categoryNames: Map<Long, String>): List<CategorySlice> {
+    val byCategory = list.groupBy { it.categoryId }
+        .map { (id, items) -> CategorySlice(categoryNames[id] ?: "Без категории", items.sumOf { it.amount }, setOf(id)) }
+        .sortedByDescending { it.amount }
+    if (byCategory.size <= MAX_SLICES + 1) return byCategory
+    val rest = byCategory.drop(MAX_SLICES)
+    return byCategory.take(MAX_SLICES) +
+        CategorySlice("Остальное", rest.sumOf { it.amount }, rest.flatMap { it.categoryIds }.toSet(), isRest = true)
+}
