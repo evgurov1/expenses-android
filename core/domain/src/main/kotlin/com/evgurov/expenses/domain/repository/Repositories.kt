@@ -2,6 +2,8 @@ package com.evgurov.expenses.domain.repository
 
 import com.evgurov.expenses.domain.model.Account
 import com.evgurov.expenses.domain.model.Category
+import com.evgurov.expenses.domain.model.IncomeSource
+import com.evgurov.expenses.domain.model.Loan
 import com.evgurov.expenses.domain.model.Transaction
 import kotlinx.coroutines.flow.Flow
 import java.time.LocalDate
@@ -23,4 +25,17 @@ interface TransactionRepository {
     fun observeBetween(from: LocalDate, to: LocalDate): Flow<List<Transaction>>
     suspend fun upsert(transaction: Transaction): Long
     suspend fun delete(transaction: Transaction)
+}
+
+interface LoanRepository {
+    fun observeAll(): Flow<List<Loan>>
+    fun observe(id: Long): Flow<Loan?>
+    suspend fun upsert(loan: Loan): Long
+    suspend fun delete(loan: Loan)
+}
+
+interface IncomeRepository {
+    fun observeAll(): Flow<List<IncomeSource>>
+    suspend fun upsert(source: IncomeSource): Long
+    suspend fun delete(source: IncomeSource)
 }

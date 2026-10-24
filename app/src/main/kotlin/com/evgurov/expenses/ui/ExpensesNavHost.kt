@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -15,16 +16,25 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.evgurov.expenses.ui.accounts.AccountsScreen
 import com.evgurov.expenses.ui.categories.CategoriesScreen
+import com.evgurov.expenses.ui.loans.AddLoanScreen
+import com.evgurov.expenses.ui.loans.LoanDetailsScreen
+import com.evgurov.expenses.ui.loans.LoansScreen
 import com.evgurov.expenses.ui.transactions.AddTransactionScreen
 import com.evgurov.expenses.ui.transactions.TransactionsScreen
 
 private object Routes {
+    const val LOANS = "loans"
+    const val ADD_LOAN = "loans/add"
+    const val LOAN_DETAILS = "loans/{loanId}"
+    fun loanDetails(id: Long) = "loans/$id"
     const val TRANSACTIONS = "transactions"
     const val ACCOUNTS = "accounts"
     const val CATEGORIES = "categories"
@@ -34,6 +44,7 @@ private object Routes {
 private data class TopLevel(val route: String, val label: String, val icon: ImageVector)
 
 private val topLevel = listOf(
+    TopLevel(Routes.LOANS, "Кредиты", Icons.Filled.CreditCard),
     TopLevel(Routes.TRANSACTIONS, "Операции", Icons.AutoMirrored.Filled.ReceiptLong),
     TopLevel(Routes.ACCOUNTS, "Счета", Icons.Filled.AccountBalanceWallet),
     TopLevel(Routes.CATEGORIES, "Категории", Icons.Filled.Category),
@@ -69,9 +80,24 @@ fun ExpensesNavHost() {
     ) { padding ->
         NavHost(
             navController = navController,
-            startDestination = Routes.TRANSACTIONS,
+            startDestination = Routes.LOANS,
             modifier = Modifier.padding(bottom = padding.calculateBottomPadding()),
         ) {
+            composable(Routes.LOANS) {
+                LoansScreen(
+                    onAddLoan = { navController.navigate(Routes.ADD_LOAN) },
+                    onOpenLoan = { navController.navigate(Routes.loanDetails(it)) },
+                )
+            }
+            composable(Routes.ADD_LOAN) {
+                AddLoanScreen(onDone = { navController.popBackStack() })
+            }
+            composable(
+                Routes.LOAN_DETAILS,
+                arguments = listOf(navArgument("loanId") { type = NavType.LongType }),
+            ) {
+                LoanDetailsScreen(onBack = { navController.popBackStack() })
+            }
             composable(Routes.TRANSACTIONS) {
                 TransactionsScreen(onAddClick = { navController.navigate(Routes.ADD_TRANSACTION) })
             }

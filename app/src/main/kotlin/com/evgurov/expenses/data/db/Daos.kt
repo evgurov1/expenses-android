@@ -45,3 +45,30 @@ interface TransactionDao {
     @Delete
     suspend fun delete(transaction: TransactionEntity)
 }
+
+@Dao
+interface LoanDao {
+    @Query("SELECT * FROM loans ORDER BY id")
+    fun observeAll(): Flow<List<LoanEntity>>
+
+    @Query("SELECT * FROM loans WHERE id = :id")
+    fun observe(id: Long): Flow<LoanEntity?>
+
+    @Upsert
+    suspend fun upsert(loan: LoanEntity): Long
+
+    @Delete
+    suspend fun delete(loan: LoanEntity)
+}
+
+@Dao
+interface IncomeSourceDao {
+    @Query("SELECT * FROM income_sources ORDER BY id")
+    fun observeAll(): Flow<List<IncomeSourceEntity>>
+
+    @Upsert
+    suspend fun upsert(source: IncomeSourceEntity): Long
+
+    @Delete
+    suspend fun delete(source: IncomeSourceEntity)
+}
