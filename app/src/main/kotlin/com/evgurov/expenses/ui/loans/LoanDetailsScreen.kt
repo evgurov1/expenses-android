@@ -20,6 +20,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -51,6 +52,7 @@ fun LoanDetailsScreen(
 ) {
     val details by viewModel.details.collectAsStateWithLifecycle()
     var confirmDelete by remember { mutableStateOf(false) }
+    var addEarly by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -71,7 +73,8 @@ fun LoanDetailsScreen(
     ) { padding ->
         val d = details ?: return@Scaffold
         val loan = d.loan
-        val paidCount = d.schedule.count { !it.dueDate.isAfter(d.today) }
+        val regular = d.schedule.filterNot { it.early }
+        val paidCount = regular.count { !it.dueDate.isAfter(d.today) }
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
@@ -89,10 +92,10 @@ fun LoanDetailsScreen(
                         style = MaterialTheme.typography.displaySmall,
                         modifier = Modifier.padding(top = 4.dp),
                     )
-                    if (!loan.isCard && d.schedule.isNotEmpty()) {
-                        val left = d.schedule.size - paidCount
+                    if (!loan.isCard && regular.isNotEmpty()) {
+                        val left = regular.size - paidCount
                         LinearProgressIndicator(
-                            progress = { paidCount.toFloat() / d.schedule.size },
+                            progress = { paidCount.toFloat() / regular.size },
                             color = MaterialTheme.colorScheme.primary,
                             trackColor = MaterialTheme.colorScheme.secondaryContainer,
                             strokeCap = StrokeCap.Round,
@@ -101,13 +104,13 @@ fun LoanDetailsScreen(
                             modifier = Modifier.fillMaxWidth().padding(top = 16.dp).height(6.dp),
                         )
                         Text(
-                            "Ещё ${paymentsTitle(left)} из ${d.schedule.size}",
+                            "Ещё ${paymentsTitle(left)} из ${regular.size}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(top = 8.dp),
                         )
                     }
-                    d.schedule.firstOrNull { it.dueDate.isAfter(d.today) }?.let { next ->
+                    regular.firstOrNull { it.dueDate.isAfter(d.today) }?.let { next ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -128,6 +131,11 @@ fun LoanDetailsScreen(
                             Text(Money.format(next.payment), style = MaterialTheme.typography.titleLarge)
                         }
                     }
+                }
+            }
+            item {
+                OutlinedButton(onClick = { addEarly = true }, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                    Text(if (loan.isCard) "Внести погашение" else "Внести досрочный платёж")
                 }
             }
             item {
@@ -155,7 +163,9 @@ fun LoanDetailsScreen(
                 item {
                     SectionTitle("График платежей", Modifier.padding(start = 4.dp, top = 12.dp))
                     Text(
-                        if (loan.bankSchedule.isNotEmpty()) {
+                        if (d.schedule.any { it.early }) {
+                            "Пересчитан приложением после досрочного платежа. Точный график смотрите в приложении банка."
+                        } else if (loan.bankSchedule.isNotEmpty()) {
                             "Из документа банка."
                         } else {
                             "Расчётный: по сумме, ставке и сроку. Точные даты и суммы смотрите в графике банка."
@@ -176,6 +186,19 @@ fun LoanDetailsScreen(
                     }
                 }
             }
+        }
+    }
+
+    if (addEarly) {
+        details?.loan?.let { loan ->
+            EarlyPaymentDialog(
+                loan = loan,
+                onSave = { result ->
+                    addEarly = false
+                    viewModel.save(result.loan)
+                },
+                onDismiss = { addEarly = false },
+            )
         }
     }
 
@@ -220,7 +243,7 @@ private fun ScheduleRow(item: ScheduleItem, paid: Boolean) {
         Column {
             Text("${item.number}. ${item.dueDate.shortTitle()}", color = color)
             Text(
-                "долг ${Money.format(item.principalPart)} · проценты ${Money.format(item.interestPart)}",
+                if (item.early) "досрочный платёж" else "долг ${Money.format(item.principalPart)} · проценты ${Money.format(item.interestPart)}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )

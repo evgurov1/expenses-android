@@ -1,5 +1,6 @@
 package com.evgurov.expenses.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
@@ -54,6 +55,7 @@ data class LoanPaymentEntity(
     val principalPart: Long,
     val interestPart: Long,
     val balanceAfter: Long,
+    @ColumnInfo(defaultValue = "0") val early: Boolean = false,
 )
 
 data class LoanWithPayments(
@@ -73,7 +75,7 @@ fun LoanWithPayments.toDomain() = Loan(
     loan.id, loan.type, loan.name, loan.bank, loan.principal, loan.annualRate, loan.termMonths, loan.issueDate,
     loan.paymentType, loan.monthlyPayment, loan.creditLimit, loan.currentBalance, loan.source, loan.note,
     bankSchedule = payments.sortedBy { it.number }.map {
-        ScheduleItem(it.number, it.dueDate, it.payment, it.principalPart, it.interestPart, it.balanceAfter)
+        ScheduleItem(it.number, it.dueDate, it.payment, it.principalPart, it.interestPart, it.balanceAfter, it.early)
     },
 )
 
@@ -86,6 +88,7 @@ fun Loan.toPaymentEntities(loanId: Long) = bankSchedule.map {
         principalPart = it.principalPart,
         interestPart = it.interestPart,
         balanceAfter = it.balanceAfter,
+        early = it.early,
     )
 }
 

@@ -266,6 +266,7 @@ object PayoffPlanner {
         var interest: Kopecks = 0
         var closeMonth: YearMonth? = null
         val monthlyRate = loan.annualRate / 100.0 / 12.0
+        private val regularItems = loan.bankSchedule.filterNot { it.early }
         val regular: Kopecks = LoanMath.regularPayment(loan).takeIf { it > 0 && !loan.isCard }
             ?: fallbackPayment(today)
 
@@ -273,11 +274,11 @@ object PayoffPlanner {
         fun minPayment(month: YearMonth): Kopecks = when {
             loan.isCard -> max((balance * CARD_MIN_SHARE).roundToLong(), CARD_MIN_PAYMENT)
             scheduleEnd != null && !month.isAfter(scheduleEnd) ->
-                loan.bankSchedule.filter { YearMonth.from(it.dueDate) == month }.sumOf { it.payment }
+                regularItems.filter { YearMonth.from(it.dueDate) == month }.sumOf { it.payment }
             else -> regular
         }
 
-        private val scheduleByMonth = loan.bankSchedule.groupBy { YearMonth.from(it.dueDate) }
+        private val scheduleByMonth = regularItems.groupBy { YearMonth.from(it.dueDate) }
 
         /**
          * Проценты за месяц. Пока идёт график банка — берём его проценты (там учтены каникулы и отложенные проценты),

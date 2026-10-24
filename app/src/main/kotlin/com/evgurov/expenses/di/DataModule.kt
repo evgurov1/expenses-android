@@ -31,7 +31,7 @@ object DatabaseModule {
             .addCallback(ExpensesDatabase.Seed)
             // Версия 1 не публиковалась: при обновлении тестовой сборки базу пересоздаём.
             .fallbackToDestructiveMigrationFrom(1)
-            .addMigrations(ExpensesDatabase.MIGRATION_2_3)
+            .addMigrations(ExpensesDatabase.MIGRATION_2_3, ExpensesDatabase.MIGRATION_3_4)
             .build()
 
     @Provides

@@ -51,6 +51,10 @@ class LoanDetailsViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    fun save(loan: Loan) {
+        viewModelScope.launch { loans.upsert(loan) }
+    }
+
     fun delete(onDeleted: () -> Unit) {
         val loan = details.value?.loan ?: return
         viewModelScope.launch {

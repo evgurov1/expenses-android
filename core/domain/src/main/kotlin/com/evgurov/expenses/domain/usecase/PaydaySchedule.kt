@@ -159,7 +159,7 @@ object PaydaySchedule {
 
     /** Дата списания в месяце: из графика банка или по дню выдачи кредита. */
     private fun dueDate(loan: Loan, month: YearMonth): LocalDate =
-        LoanMath.schedule(loan).firstOrNull { YearMonth.from(it.dueDate) == month }?.dueDate
+        LoanMath.schedule(loan).firstOrNull { !it.early && YearMonth.from(it.dueDate) == month }?.dueDate
             ?: dayIn(month, loan.issueDate.dayOfMonth)
 
     private val monthsGenitive = listOf(

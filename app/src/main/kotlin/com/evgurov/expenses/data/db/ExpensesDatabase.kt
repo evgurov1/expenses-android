@@ -15,7 +15,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         IncomeSourceEntity::class,
         LoanPaymentEntity::class,
     ],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -61,6 +61,13 @@ abstract class ExpensesDatabase : RoomDatabase() {
 
     companion object {
         const val NAME = "expenses.db"
+
+        /** v4: досрочные платежи пользователя в графике. */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `loan_payments` ADD COLUMN `early` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
 
         /** v3: график платежей из документа банка. */
         val MIGRATION_2_3 = object : Migration(2, 3) {

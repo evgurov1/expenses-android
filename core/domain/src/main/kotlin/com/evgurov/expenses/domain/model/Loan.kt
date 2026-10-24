@@ -49,4 +49,6 @@ data class ScheduleItem(
     val principalPart: Kopecks,
     val interestPart: Kopecks,
     val balanceAfter: Kopecks,
+    /** Досрочный платёж, который внёс пользователь; в регулярные платежи и ПДН не входит. */
+    val early: Boolean = false,
 )

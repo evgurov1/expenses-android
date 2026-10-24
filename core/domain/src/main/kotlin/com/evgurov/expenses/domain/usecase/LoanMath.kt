@@ -29,7 +29,7 @@ object LoanMath {
     fun regularPayment(loan: Loan): Kopecks = when {
         loan.isCard -> cardPayment(loan)
         loan.monthlyPayment != null -> loan.monthlyPayment
-        loan.bankSchedule.isNotEmpty() -> typicalPayment(loan.bankSchedule)
+        loan.bankSchedule.isNotEmpty() -> typicalPayment(loan.bankSchedule.filterNot { it.early })
         loan.termMonths <= 0 -> 0
         loan.paymentType == PaymentType.ANNUITY -> annuityPayment(loan.principal, loan.annualRate, loan.termMonths)
         else -> schedule(loan).firstOrNull()?.payment ?: 0
@@ -90,7 +90,7 @@ object LoanMath {
      */
     fun paymentInMonth(loan: Loan, month: YearMonth): Kopecks {
         if (loan.isCard) return cardPayment(loan)
-        val items = schedule(loan)
+        val items = schedule(loan).filterNot { it.early }
         if (items.isEmpty()) return loan.monthlyPayment ?: 0
         val item = items.firstOrNull { YearMonth.from(it.dueDate) == month } ?: return 0
         // Если пользователь указал платёж из договора, в ПДН берём его, а не последний «хвост» графика.
