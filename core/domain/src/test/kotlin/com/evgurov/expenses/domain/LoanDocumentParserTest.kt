@@ -237,6 +237,43 @@ class LoanDocumentParserTest {
     }
 
     @Test
+    fun `cash loan contract with "сумма кредита или лимит" is not a card`() {
+        // Обезличенный фрагмент индивидуальных условий Ozon Банка (текст PdfBox).
+        val contract = """
+            ПОЛНАЯ СТОИМОСТЬ КРЕДИТА ПОЛНАЯ СТОИМОСТЬ КРЕДИТА
+            СОСТАВЛЯЕТ 40,716% (СОРОК СОСТАВЛЯЕТ 270 940 (ДВЕСТИ
+            ИНДИВИДУАЛЬНЫЕ УСЛОВИЯ ДОГОВОРА ПОТРЕБИТЕЛЬСКОГО КРЕДИТА «КРЕДИТ НАЛИЧНЫМИ»
+            Дата 15.01.2026 года № 2026-01-15-ПК-00000000000000000001
+            Подписывая настоящие Индивидуальные условия Договора потребительского кредита «Кредит наличными» ООО «ОЗОН Банк»
+            1. Сумма кредита или лимит Сумма кредита 200 000 руб. 00 копеек (Двести тысяч рублей 00 копеек).
+            кредитования и порядок его
+            возврата кредита Клиентом и Банком своих обязательств по Договору. Срок возврата кредита – по истечении 60 (шестьдесят) месяцев с даты
+            4. Процентная ставка (процентные 4.1. Процентная ставка за пользование кредитом устанавливается в размере 40.70 % (Сорок целых семьдесят сотых
+            6. Количество, размер и 60 (шестьдесят) Ежемесячных платежей, порядок определения которых установлен в Общих условиях
+        """.trimIndent()
+        val parsed = LoanDocumentParser.parse(contract)
+        assertEquals("Ozon Банк", parsed.bank)
+        assertEquals("2026-01-15-ПК-00000000000000000001", parsed.contractNumber)
+        assertEquals(LocalDate.of(2026, 1, 15), parsed.contractDate)
+        assertEquals(200_000_00L, parsed.principal)
+        assertEquals(40.7, parsed.annualRate!!, 0.001)
+        assertTrue(!parsed.rateIsEstimated)
+        assertEquals(60, parsed.termMonths)
+        assertTrue(!parsed.isCard)
+
+        val screen = LoanDocumentParser.parse(
+            "Кредит наличными\nОсталось выплатить\n\n197 884,71Р\nЕщё 58 платежей\n2 ноября спишем с основного счёта\n\n7844Р",
+            today = LocalDate.of(2026, 10, 24),
+        )
+        val loan = listOf(screen, parsed).mergeLoans().toLoan(LoanSource.CONTRACT)
+        assertEquals(LoanType.CONSUMER, loan.type)
+        assertEquals(200_000_00L, loan.principal)
+        assertEquals(60, loan.termMonths)
+        assertEquals(7_844_00L, loan.monthlyPayment)
+        assertEquals(197_884_71L, LoanMath.balanceOn(loan, LocalDate.of(2026, 10, 24)))
+    }
+
+    @Test
     fun `credit card screenshot becomes a card`() {
         val parsed = LoanDocumentParser.parse("Альфа-Банк\nКредитный лимит 150 000 ₽\nТекущая задолженность 32 000 ₽")
         assertTrue(parsed.isCard)

@@ -39,7 +39,9 @@ data class ParsedLoan(
     val nextPaymentDate: LocalDate? = null,
     val payments: List<ParsedPayment> = emptyList(),
 ) {
-    val isCard: Boolean get() = creditLimit != null && payments.isEmpty()
+    /** Карта — только если есть лимит и нет признаков обычного кредита (суммы, срока, числа платежей, графика). */
+    val isCard: Boolean
+        get() = creditLimit != null && payments.isEmpty() && principal == null && termMonths == null && remainingPayments == null
 
     val schedule: List<ScheduleItem>
         get() = payments.filter { !it.isEarly }.map {
@@ -149,6 +151,13 @@ object LoanDocumentParser {
     private const val AMOUNT_AFTER_LABEL =
         """[^\n]{0,60}?(?:\n\s*){0,2}(?<![\d.,])(\d{1,3}(?: \d{3})+(?:[.,]\d{2})?|\d+[.,]\d{2}|\d+(?=\s*(?:₽|руб|р(?!\p{L}))))(?![\d.,])"""
 
+    /** «60 (шестьдесят) месяцев»: число прописью в скобках после цифр. */
+    private const val WORDS_IN_BRACKETS = """(?:\([\p{L} -]+\)\s*)?"""
+
+    /** Шапка договора: «Дата 02.08.2026 года № 2026-08-02-ПК-0809…». Группы: дата, номер. */
+    private val headerNumberDate =
+        Regex("""дата\s+(\d{2}\.\d{2}\.\d{4})\s*(?:г\.|года)?\s*№\s*([\p{L}\d/-]*\d[\p{L}\d/-]*)""")
+
     private val monthsGenitive = listOf(
         "января", "февраля", "марта", "апреля", "мая", "июня",
         "июля", "августа", "сентября", "октября", "ноября", "декабря",
@@ -190,7 +199,7 @@ object LoanDocumentParser {
             ?: payments.firstOrNull()?.let { p -> p.balanceAfter?.plus(p.principalPart ?: 0) }
         val statedRate = Regex("""(\d{1,3}(?:[.,]\d{1,3})?)\s*%\s*годовых""")
             .find(lower)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()
-            ?: Regex("""ставк\p{L}*[^\d\n]{0,40}(\d{1,3}(?:[.,]\d{1,3})?)\s*%""")
+            ?: Regex("""ставк\p{L}*[^\d\n]{0,80}(\d{1,3}(?:[.,]\d{1,3})?)\s*%""")
                 .find(lower)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()
         val currentDebt = labeledAmount(
             lower,
@@ -209,17 +218,25 @@ object LoanDocumentParser {
         }
         return ParsedLoan(
             bank = detectBank(lower),
-            contractNumber = Regex("""(?:номер\s+договора|договор\p{L}*[^\n№]{0,60}№|№\s*договора)\s*:?\s*([\p{L}\d/-]*\d[\p{L}\d/-]*)""")
-                .find(lower)?.groups?.get(1)?.range?.let { normalized.substring(it) },
+            contractNumber = (
+                Regex("""(?:номер\s+договора|договор\p{L}*[^\n№]{0,60}№|№\s*договора)\s*:?\s*([\p{L}\d/-]*\d[\p{L}\d/-]*)""")
+                    .find(lower)?.groups?.get(1)
+                    ?: headerNumberDate.find(lower)?.groups?.get(2)
+                )?.range?.let { normalized.substring(it) },
             contractDate = Regex("""(?:дата\s+(?:заключения|оформления)\s+договора|договор\p{L}*[^\n]{0,80}?\sот)\s*:?\s*(\d{2}\.\d{2}\.\d{4})""")
-                .find(lower)?.groupValues?.get(1)?.let(::parseDate),
+                .find(lower)?.groupValues?.get(1)?.let(::parseDate)
+                ?: headerNumberDate.find(lower)?.groupValues?.get(1)?.let(::parseDate)
+                ?: Regex("""дата\s+(?:предоставления|выдачи)(?:\s+кредита)?\s*:?\s*(\d{2}\.\d{2}\.\d{4})""")
+                    .find(lower)?.groupValues?.get(1)?.let(::parseDate),
             principal = principal,
             annualRate = statedRate ?: estimatedRate,
             rateIsEstimated = statedRate == null && estimatedRate != null,
             regularPayment = regular,
             termMonths = numbered.mapNotNull { it.number }.maxOrNull()
-                ?: Regex("""срок\p{L}*[^\d\n]{0,30}(\d{1,3})\s*(?:мес|month)""")
-                    .find(lower)?.groupValues?.get(1)?.toIntOrNull(),
+                ?: Regex("""срок\p{L}*[^\d\n]{0,60}(\d{1,3})\s*$WORDS_IN_BRACKETS(?:мес|month)""")
+                    .find(lower)?.groupValues?.get(1)?.toIntOrNull()
+                ?: Regex("""(?<![\d.,])(\d{1,3})\s*$WORDS_IN_BRACKETS(?:ежемесячн\p{L}*\s+)?плат[её]ж\p{L}*""")
+                    .find(lower)?.takeIf { remaining == null }?.groupValues?.get(1)?.toIntOrNull(),
             currentDebt = currentDebt,
             creditLimit = labeledAmount(lower, "(?:кредитн\\p{L}*\\s+)?лимит\\p{L}*"),
             remainingPayments = remaining,
