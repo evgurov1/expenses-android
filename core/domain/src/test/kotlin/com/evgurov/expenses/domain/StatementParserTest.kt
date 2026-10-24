@@ -61,7 +61,7 @@ class StatementParserTest {
         assertEquals(1_425_50L, rows[2].operation.amount)
     }
 
-    // «Справка о движении средств» Т-Банка: время и продолжение описания на второй строке (данные вымышленные).
+    // «Справка о движении средств» Т-Банка (данные вымышленные): её не загружаем, в ней все счета и траты задваиваются.
     private val report = """
         АКЦИОНЕРНОЕ ОБЩЕСТВО «ТБАНК»
         Справка о движении средств
@@ -87,20 +87,8 @@ class StatementParserTest {
     """.trimIndent()
 
     @Test
-    fun `reads tbank movement report`() {
-        val rows = StatementParser.parse(report)!!.rows
-        assertEquals(5, rows.size)
-        assertEquals("09:04", rows[0].time)
-        assertEquals("Переводы", CategoryGuesser.guess(rows[0].operation))
-        assertEquals("MOSAIC-COFFEE&TEA", rows[1].description)
-        assertEquals("Кафе и рестораны", CategoryGuesser.guess(rows[1].operation))
-        assertEquals(TransactionKind.INCOME, rows[2].operation.kind)
-        assertEquals("Проценты и кешбэк", CategoryGuesser.guess(rows[2].operation))
-        // Операция в другой валюте: берём сумму в рублях.
-        assertEquals(4_327_92L, rows[3].operation.amount)
-        assertEquals("Наличные", CategoryGuesser.guess(rows[3].operation))
-        assertEquals(LocalDate.of(2026, 10, 20), rows[4].date)
-        assertEquals("Платежи по кредитам", CategoryGuesser.guess(rows[4].operation))
+    fun `skips tbank movement report`() {
+        assertNull(StatementParser.parse(report))
     }
 
     @Test
