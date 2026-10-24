@@ -56,7 +56,7 @@ class StatementParserTest {
         val categories = rows.map { CategoryGuesser.guess(it.operation) }
         assertEquals(
             listOf(
-                "Кафе и рестораны", "Продукты", "Переводы", "Платежи по кредитам", "Продукты",
+                "Кафе и рестораны", "Доставка еды", "Переводы", "Платежи по кредитам", "Продукты",
                 "Зарплата", "Услуги банка", "Проценты и кешбэк",
             ),
             categories,

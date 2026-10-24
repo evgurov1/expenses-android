@@ -74,8 +74,8 @@ data class Period(val mode: PeriodMode, val anchor: LocalDate) {
     )
 }
 
-/** Доля категории на диаграмме; «Остальное» объединяет несколько категорий. */
-data class CategorySlice(val name: String, val amount: Long, val categoryIds: Set<Long>, val isRest: Boolean = false)
+/** Доля категории на диаграмме. */
+data class CategorySlice(val name: String, val amount: Long, val categoryIds: Set<Long>)
 
 data class TransactionsUiState(
     val period: Period = Period(PeriodMode.MONTH, LocalDate.now()),
@@ -229,16 +229,8 @@ private val DAY = DateTimeFormatter.ofPattern("dd.MM.yy")
 /** Категория платежей по кредитам: идут по графику, в средние траты в день не входят. */
 private const val LOAN_PAYMENTS = "Платежи по кредитам"
 
-/** Сколько категорий показываем отдельно; остальные идут в «Остальное». */
-const val MAX_SLICES = 6
-
-/** Суммы по категориям по убыванию: первые [MAX_SLICES] отдельно, остальные одной долей. */
-fun categorySlices(list: List<Transaction>, categoryNames: Map<Long, String>): List<CategorySlice> {
-    val byCategory = list.groupBy { it.categoryId }
+/** Суммы по каждой категории по убыванию. */
+fun categorySlices(list: List<Transaction>, categoryNames: Map<Long, String>): List<CategorySlice> =
+    list.groupBy { it.categoryId }
         .map { (id, items) -> CategorySlice(categoryNames[id] ?: "Без категории", items.sumOf { it.amount }, setOf(id)) }
         .sortedByDescending { it.amount }
-    if (byCategory.size <= MAX_SLICES + 1) return byCategory
-    val rest = byCategory.drop(MAX_SLICES)
-    return byCategory.take(MAX_SLICES) +
-        CategorySlice("Остальное", rest.sumOf { it.amount }, rest.flatMap { it.categoryIds }.toSet(), isRest = true)
-}

@@ -218,8 +218,8 @@ class BankImporter @Inject constructor(
         const val MAX_SKIPPED = 20
         const val CATEGORIES_VERSION = "categories_version"
 
-        /** Версия словаря категорий: 1 — добавлена «Доставка еды». */
-        const val CURRENT_CATEGORIES_VERSION = 1
+        /** Версия словаря категорий: 1 — добавлена «Доставка еды», 2 — в неё перенесён ВкусВилл. */
+        const val CURRENT_CATEGORIES_VERSION = 2
         val FOOD_DELIVERY_CATEGORIES = setOf(CategoryGuesser.FOOD_DELIVERY)
     }
 }

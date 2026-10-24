@@ -17,13 +17,12 @@ object CategoryGuesser {
         FOOD_DELIVERY to listOf(
             "самокат", "samokat", "лавка", "lavka", "яндекс еда", "yandex eda", "eda.yandex", "yandex.eda", "yandex food",
             "delivery club", "perekrest", "перекрест", "vprok", "впрок", "kuper", "купер", "sbermarket", "сбермаркет",
-            "utkonos", "утконос",
+            "utkonos", "утконос", "вкусвилл", "vkusvill",
         ),
         "Продукты" to listOf(
             "ovosch", "овощ", "nuts", "kolbas", "колбас", "rybn", "рыбн", "myaso", "мясо", "hleb", "хлеб", "bakery", "пекарн",
             "metro store", "magazin", "магазин", "produkt",
-            "пятерочк", "pyaterochk", "магнит", "magnit", "лента", "lenta", "вкусвилл",
-            "vkusvill", "ашан", "auchan", "дикси", "dixy", "spar", " окей", "okey", "кэш энд керри", "metro cash", "o'key", "metro c&c", "globus",
+            "пятерочк", "pyaterochk", "магнит", "magnit", "лента", "lenta", "ашан", "auchan", "дикси", "dixy", "spar", " окей", "okey", "кэш энд керри", "metro cash", "o'key", "metro c&c", "globus",
             "глобус", "fix price", "светофор", "верный", "verny", "азбука вкуса",
             "av daily", "чижик", "chizhik", "бристоль", "bristol", "красное&белое", "krasnoe", "producty", "продукт",
         ),

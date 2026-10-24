@@ -65,7 +65,7 @@ class BankNotificationTest {
 
     @Test
     fun `food delivery is a separate category`() {
-        listOf("YANDEX*5399*EDA", "YANDEX*5399*LAVKA", "SAMOKAT", "PEREKRESTOK VPROK", "Самокат").forEach {
+        listOf("YANDEX*5399*EDA", "YANDEX*5399*LAVKA", "SAMOKAT", "PEREKRESTOK VPROK", "Самокат", "VKUSVILL 123").forEach {
             assertEquals(it, "Доставка еды", CategoryGuesser.byMerchant(it))
         }
         val op = parse(tbank, "Покупка", "Покупка, карта *1234. 1 250 ₽. SAMOKAT. Доступно 12 345 ₽")!!

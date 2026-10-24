@@ -44,7 +44,8 @@ private val SliceColors = listOf(
 )
 private val RestColor = Color(0xFFB8BCC4)
 
-private fun CategorySlice.color(index: Int) = if (isRest) RestColor else SliceColors[index % SliceColors.size]
+/** Крупные категории — своим цветом, мелкие — серым и на кольце одной долей. Подписи у всех свои. */
+private fun sliceColor(index: Int) = SliceColors.getOrElse(index) { RestColor }
 
 /** Диаграмма-кольцо по категориям, как в Т-Банке: под ней категории с суммами, нажатие фильтрует список. */
 @OptIn(ExperimentalLayoutApi::class)
@@ -100,7 +101,7 @@ fun CategoryChart(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             slices.forEachIndexed { index, slice ->
-                SliceChip(slice, slice.color(index), slice == selected) { onSlice(slice) }
+                SliceChip(slice, sliceColor(index), slice == selected) { onSlice(slice) }
             }
         }
     }
@@ -113,20 +114,24 @@ private fun Donut(slices: List<CategorySlice>, selected: CategorySlice?, modifie
         val width = 28.dp.toPx()
         val inset = width / 2 + 4.dp.toPx()
         val arcSize = Size(size.width - inset * 2, size.height - inset * 2)
-        // Зазор между долями: около 2 dp по внешнему краю.
-        val gap = if (slices.size > 1) Math.toDegrees((2.dp.toPx() / (arcSize.width / 2)).toDouble()).toFloat() else 0f
+        // Мелкие категории (без своего цвета) рисуем одной серой долей.
+        val big = slices.take(SliceColors.size)
+        val small = slices.drop(SliceColors.size)
+        val arcs = big.mapIndexed { i, s -> Triple(s.amount, sliceColor(i), s == selected) } +
+            if (small.isEmpty()) emptyList() else listOf(Triple(small.sumOf { it.amount }, RestColor, selected in small))
+        val gap = if (arcs.size > 1) Math.toDegrees((2.dp.toPx() / (arcSize.width / 2)).toDouble()).toFloat() else 0f
         var start = -90f
-        slices.forEachIndexed { index, slice ->
-            val sweep = slice.amount / total * 360f
-            val dimmed = selected != null && slice != selected
+        arcs.forEach { (amount, color, isSelected) ->
+            val sweep = amount / total * 360f
+            val dimmed = selected != null && !isSelected
             drawArc(
-                color = slice.color(index).copy(alpha = if (dimmed) 0.25f else 1f),
+                color = color.copy(alpha = if (dimmed) 0.25f else 1f),
                 startAngle = start + gap / 2,
                 sweepAngle = (sweep - gap).coerceAtLeast(0.5f),
                 useCenter = false,
                 topLeft = Offset(inset, inset),
                 size = arcSize,
-                style = Stroke(width = if (slice == selected) width + 6.dp.toPx() else width),
+                style = Stroke(width = if (isSelected) width + 6.dp.toPx() else width),
             )
             start += sweep
         }
