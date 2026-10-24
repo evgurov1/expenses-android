@@ -10,21 +10,28 @@ object CategoryGuesser {
     const val TRANSFERS = "Переводы"
     const val OTHER_EXPENSE = "Прочее"
     const val OTHER_INCOME = "Прочие доходы"
+    const val FOOD_DELIVERY = "Доставка еды"
 
     private val expenseRules: List<Pair<String, List<String>>> = listOf(
+        // Доставка — раньше продуктов и кафе: пользователь хочет видеть её отдельно.
+        FOOD_DELIVERY to listOf(
+            "самокат", "samokat", "лавка", "lavka", "яндекс еда", "yandex eda", "eda.yandex", "yandex.eda", "yandex food",
+            "delivery club", "perekrest", "перекрест", "vprok", "впрок", "kuper", "купер", "sbermarket", "сбермаркет",
+            "utkonos", "утконос",
+        ),
         "Продукты" to listOf(
             "ovosch", "овощ", "nuts", "kolbas", "колбас", "rybn", "рыбн", "myaso", "мясо", "hleb", "хлеб", "bakery", "пекарн",
-            "metro store", "perekrest", "magazin", "магазин", "produkt",
-            "пятерочк", "pyaterochk", "магнит", "magnit", "перекрест", "perekrestok", "лента", "lenta", "вкусвилл",
+            "metro store", "magazin", "магазин", "produkt",
+            "пятерочк", "pyaterochk", "магнит", "magnit", "лента", "lenta", "вкусвилл",
             "vkusvill", "ашан", "auchan", "дикси", "dixy", "spar", " окей", "okey", "кэш энд керри", "metro cash", "o'key", "metro c&c", "globus",
-            "глобус", "самокат", "samokat", "лавка", "lavka", "fix price", "светофор", "верный", "verny", "азбука вкуса",
+            "глобус", "fix price", "светофор", "верный", "verny", "азбука вкуса",
             "av daily", "чижик", "chizhik", "бристоль", "bristol", "красное&белое", "krasnoe", "producty", "продукт",
         ),
         "Кафе и рестораны" to listOf(
             "kafe", "ramen", "espresso", "bistro", "бистро", "stolovaya", "столов", "bar ", "pub ",
             "kfc", "rostic", "burger", "бургер", "вкусно", "vkusno", "mcdonald", "coffee", "кофе", "cofix",
             "шоколадниц", "shokoladnitsa", "додо", "dodo", "pizza", "пицц", "cafe", "кафе", "restoran", "ресторан",
-            "яндекс еда", "yandex eda", "eda.yandex", "delivery club", "суши", "sushi", "теремок", "teremok", "stars coffee",
+            "суши", "sushi", "теремок", "teremok", "stars coffee",
         ),
         "Транспорт" to listOf(
             "avtozapchast", "автозапчаст", "azk", "азк", " auto ", "carprice",
@@ -75,6 +82,12 @@ object CategoryGuesser {
             .replace(Regex("""[^\p{L}&.' ]"""), " ")
             .replace(Regex("""\s+"""), " ")
             .trim()
+
+    /** Категория по словарю магазинов, без учёта типа операции и выбора пользователя. */
+    fun byMerchant(merchant: String): String? {
+        val key = merchantKey(merchant)
+        return expenseRules.firstOrNull { (_, words) -> words.any { it in " $key " } }?.first
+    }
 
     /**
      * @param learned выбор пользователя: ключ магазина → название категории.

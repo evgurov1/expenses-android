@@ -163,6 +163,28 @@ class BankImporter @Inject constructor(
         }
     }
 
+    /**
+     * Раскладывает уже загруженные операции по новым категориям словаря (например, «Доставка еды»).
+     * Выполняется один раз на версию словаря; магазины, для которых пользователь сам выбрал категорию, не трогаем.
+     */
+    suspend fun upgradeCategories() = lock.withLock {
+        if (prefs.getInt(CATEGORIES_VERSION, 0) >= CURRENT_CATEGORIES_VERSION) return@withLock
+        val cache = loadCategories()
+        val learned = transactions.merchantRules().keys
+        val target = FOOD_DELIVERY_CATEGORIES
+        for (t in transactions.observeAll().first()) {
+            if (t.externalId == null || t.kind != TransactionKind.EXPENSE) continue
+            val name = CategoryGuesser.byMerchant(t.note)?.takeIf { it in target } ?: continue
+            if (CategoryGuesser.merchantKey(t.note) in learned) continue
+            val id = cache.all.firstOrNull { it.name == name && it.kind == TransactionKind.EXPENSE }?.id
+                ?: categories.upsert(Category(name = name, kind = TransactionKind.EXPENSE)).also { id ->
+                    cache.all += Category(id = id, name = name, kind = TransactionKind.EXPENSE)
+                }
+            if (t.categoryId != id) transactions.upsert(t.copy(categoryId = id))
+        }
+        prefs.edit().putInt(CATEGORIES_VERSION, CURRENT_CATEGORIES_VERSION).apply()
+    }
+
     /** Пользователь сменил категорию операции: запоминаем выбор для этого магазина. */
     suspend fun learn(transaction: Transaction, categoryId: Long) {
         transactions.upsert(transaction.copy(categoryId = categoryId))
@@ -194,5 +216,10 @@ class BankImporter @Inject constructor(
     private companion object {
         const val SKIPPED = "skipped"
         const val MAX_SKIPPED = 20
+        const val CATEGORIES_VERSION = "categories_version"
+
+        /** Версия словаря категорий: 1 — добавлена «Доставка еды». */
+        const val CURRENT_CATEGORIES_VERSION = 1
+        val FOOD_DELIVERY_CATEGORIES = setOf(CategoryGuesser.FOOD_DELIVERY)
     }
 }

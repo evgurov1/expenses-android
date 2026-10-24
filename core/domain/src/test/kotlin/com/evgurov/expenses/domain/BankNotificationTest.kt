@@ -64,6 +64,16 @@ class BankNotificationTest {
     }
 
     @Test
+    fun `food delivery is a separate category`() {
+        listOf("YANDEX*5399*EDA", "YANDEX*5399*LAVKA", "SAMOKAT", "PEREKRESTOK VPROK", "Самокат").forEach {
+            assertEquals(it, "Доставка еды", CategoryGuesser.byMerchant(it))
+        }
+        val op = parse(tbank, "Покупка", "Покупка, карта *1234. 1 250 ₽. SAMOKAT. Доступно 12 345 ₽")!!
+        assertEquals("Доставка еды", CategoryGuesser.guess(op))
+        assertEquals("Продукты", CategoryGuesser.byMerchant("PYATEROCHKA 1234"))
+    }
+
+    @Test
     fun `reads balance after operation`() {
         assertEquals(12_345_00L, BankNotificationParser.balance("Покупка", "Покупка, карта *1234. 450,50 ₽. PYATEROCHKA 1234. Доступно 12 345 ₽"))
         assertEquals(5_432_10L, BankNotificationParser.balance("СберБанк", "MIR-1234 14:05 Покупка 1 299р KFC Баланс: 5 432.10р"))

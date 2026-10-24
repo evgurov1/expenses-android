@@ -133,6 +133,10 @@ class TransactionsViewModel @Inject constructor(
         }
     }
 
+    init {
+        viewModelScope.launch { importer.upgradeCategories() }
+    }
+
     private val period = MutableStateFlow(Period(PeriodMode.MONTH, LocalDate.now()))
     private val chartKind = MutableStateFlow(TransactionKind.EXPENSE)
     private val selectedName = MutableStateFlow<String?>(null)
