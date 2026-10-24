@@ -58,6 +58,8 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
+        // ML Kit GenAI собран Kotlin 2.2; разрешаем читать его метаданные, не обновляя весь проект.
+        freeCompilerArgs.add("-Xskip-metadata-version-check")
     }
 }
 
@@ -94,4 +96,9 @@ dependencies {
     implementation(libs.mlkit.genai.prompt)
 
     testImplementation(libs.junit)
+}
+
+// KSP компилирует те же зависимости отдельной задачей — ей нужен тот же флаг.
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask<*>>().configureEach {
+    compilerOptions.freeCompilerArgs.add("-Xskip-metadata-version-check")
 }
