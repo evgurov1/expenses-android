@@ -25,6 +25,7 @@ class StatementParserTest {
         17.09.26 06:12 18.09.26 Оплата в "SKURATOV COFFEE" g Samara 310.00 ₽ 310.00 ₽
         RU
         17.09.26 19:00 18.09.26 Оплата в VKUSVILL Moskva RUS 1 425.50 ₽ 1 425.50 ₽
+        18.09.26 18.09.26 Перевод с договора 8400000000 + 20 000.00 ₽ + 20 000.00 ₽
         18.09.26 18.09.26 Пополнение. Система быстрых платежей + 141 517.00 ₽ + 141 517.00 ₽
         18.09.26 18.09.26 Досрочное погашение Задолженности по 70 600.00 ₽ 70 600.00 ₽
         Кредиту  MOSCOW RU
@@ -40,8 +41,9 @@ class StatementParserTest {
     @Test
     fun `reads tbank statement rows with categories`() {
         val rows = StatementParser.parse(text)!!.rows
-        assertEquals(9, rows.size)
-        val coffee = rows[1]
+        // Внутренний перевод на свой договор пропущен.
+        assertEquals(8, rows.size)
+        val coffee = rows[0]
         assertEquals(LocalDate.of(2026, 9, 17), coffee.date)
         assertEquals("06:12", coffee.time)
         assertEquals(310_00L, coffee.operation.amount)
@@ -51,14 +53,14 @@ class StatementParserTest {
         val categories = rows.map { CategoryGuesser.guess(it.operation) }
         assertEquals(
             listOf(
-                "Переводы", "Кафе и рестораны", "Продукты", "Переводы", "Платежи по кредитам", "Продукты",
+                "Кафе и рестораны", "Продукты", "Переводы", "Платежи по кредитам", "Продукты",
                 "Зарплата", "Услуги банка", "Проценты и кешбэк",
             ),
             categories,
         )
-        assertEquals(TransactionKind.INCOME, rows[3].operation.kind)
-        assertEquals(141_517_00L, rows[3].operation.amount)
-        assertEquals(1_425_50L, rows[2].operation.amount)
+        assertEquals(TransactionKind.INCOME, rows[2].operation.kind)
+        assertEquals(141_517_00L, rows[2].operation.amount)
+        assertEquals(1_425_50L, rows[1].operation.amount)
     }
 
     // «Справка о движении средств» Т-Банка (данные вымышленные): её не загружаем, в ней все счета и траты задваиваются.

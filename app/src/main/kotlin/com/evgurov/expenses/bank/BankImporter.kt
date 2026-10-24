@@ -53,7 +53,7 @@ class BankImporter @Inject constructor(
             val full = "$title. $text"
             val lower = full.lowercase()
             if (Regex("""\d\s?(₽|р\b|руб|rub)""", RegexOption.IGNORE_CASE).containsMatchIn(full) &&
-                listOf("код", "пароль").none { it in lower }
+                listOf("код", "пароль").none { it in lower } && !BankNotificationParser.isOwnTransfer(lower)
             ) {
                 remember(SkippedNotification(bank.accountName, full.take(200), date.toString()))
             }

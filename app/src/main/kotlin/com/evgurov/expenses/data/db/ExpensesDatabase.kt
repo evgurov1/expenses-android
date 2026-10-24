@@ -16,7 +16,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LoanPaymentEntity::class,
         MerchantRuleEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -62,6 +62,16 @@ abstract class ExpensesDatabase : RoomDatabase() {
 
     companion object {
         const val NAME = "expenses.db"
+
+        /** v7: переводы между своими счетами из выписки — не траты и не доходы, убираем. */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "DELETE FROM `transactions` WHERE `externalId` LIKE 'stmt:%' AND " +
+                        "(`note` LIKE 'Внутренний перевод на договор%' OR `note` LIKE 'Перевод с договора%')",
+                )
+            }
+        }
 
         /**
          * v6: убираем операции из выписок и справок Т-Банка. Справка задваивала траты, а отличить её

@@ -19,6 +19,7 @@ data class Statement(val bank: Bank, val rows: List<StatementRow>)
 /**
  * Выписка по карте Т-Банка из PDF: «17.09.26 06:12 18.09.26 Оплата в VKUSVILL Moskva RUS 1 425.00 ₽ 1 425.00 ₽».
  * «Справку о движении средств» не читаем: в ней все счета сразу, и траты задваиваются.
+ * Переводы между своими счетами («Внутренний перевод на договор», «Перевод с договора») пропускаем.
  */
 object StatementParser {
     val TBANK = Bank("statement.tbank", "Т-Банк")
@@ -81,6 +82,7 @@ object StatementParser {
         // Продолжение описания: у покупки это город, у перевода — номер телефона или название организации.
         val continuation = draft.extra.joinToString(" ")
         val full = listOf(description, continuation).filter { it.isNotBlank() }.joinToString(" ")
+        if (BankNotificationParser.isOwnTransfer(full)) return null
         val type = BankNotificationParser.typeOf(full.lowercase())
         val merchant = merchantOf(if (continuation.any(Char::isDigit)) description else full)
         val note = when {

@@ -63,11 +63,19 @@ object BankNotificationParser {
         "покупк", "оплат", "списан", "снятие", "перевод", "платёж", "платеж", "погашени", "отправлен",
     )
 
+    private val ownTransferWords = listOf(
+        "внутренний перевод на договор", "перевод с договора", "между своими", "между счетами", "копилк",
+        "на свой счет", "на свой счёт", "со своего счета", "со своего счёта",
+    )
+
+    /** Перевод между своими счетами: это не трата и не доход, такие операции не учитываем. */
+    fun isOwnTransfer(text: String): Boolean = text.lowercase().let { lower -> ownTransferWords.any { it in lower } }
+
     fun parse(packageName: String, title: String, text: String): BankOperation? {
         val bank = bankFor(packageName) ?: return null
         val full = "$title. $text".replace('\n', ' ').trim()
         val lower = full.lowercase()
-        if (skipWords.any { it in lower }) return null
+        if (skipWords.any { it in lower } || isOwnTransfer(lower)) return null
 
         val match = money.findAll(full).firstOrNull { m -> !balanceWords.containsMatchIn(full.substring(0, m.range.first)) } ?: return null
         val rubles = match.groupValues[2].filter(Char::isDigit).toLongOrNull() ?: return null

@@ -60,6 +60,7 @@ class BankNotificationTest {
         assertNull(parse(tbank, "Операция отклонена", "Покупка 450 ₽ не прошла: недостаточно средств"))
         assertNull(parse("ru.ozon.app.android", "Ozon", "Покупка 450 ₽"))
         assertNull(parse(tbank, "Напоминание", "Завтра будет списан платёж 7 844 ₽"))
+        assertNull(parse(tbank, "Перевод", "Перевод между своими счетами 5 000 ₽"))
     }
 
     @Test
