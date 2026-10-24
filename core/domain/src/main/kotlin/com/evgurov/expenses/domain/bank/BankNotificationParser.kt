@@ -16,7 +16,7 @@ data class BankOperation(
     val type: OperationType,
 )
 
-enum class OperationType { PURCHASE, TRANSFER, SALARY, CASHBACK, LOAN_PAYMENT, FEE, OTHER }
+enum class OperationType { PURCHASE, TRANSFER, SALARY, CASHBACK, LOAN_PAYMENT, FEE, CASH, OTHER }
 
 /**
  * Разбор пуш-уведомлений банков. Тексты у банков разные и меняются,
@@ -98,6 +98,9 @@ object BankNotificationParser {
         "зарплат" in lower || "аванс" in lower || "от организации" in lower -> OperationType.SALARY
         "кэшбэк" in lower || "кешбэк" in lower || "cashback" in lower || "возврат" in lower -> OperationType.CASHBACK
         "комисси" in lower -> OperationType.FEE
+        "снятие наличных" in lower -> OperationType.CASH
+        "досрочное погашение" in lower || "оплата долями" in lower || "dolyame" in lower || "yandex split" in lower ->
+            OperationType.LOAN_PAYMENT
         "кредит" in lower && ("погашени" in lower || "платеж" in lower || "платёж" in lower || "списан" in lower) -> OperationType.LOAN_PAYMENT
         "перевод" in lower || "пополнен" in lower || "сбп" in lower -> OperationType.TRANSFER
         "покупк" in lower || "оплат" in lower -> OperationType.PURCHASE

@@ -9,6 +9,7 @@ import com.evgurov.expenses.domain.model.Account
 import com.evgurov.expenses.domain.model.AccountType
 import com.evgurov.expenses.domain.model.Category
 import com.evgurov.expenses.domain.model.Transaction
+import com.evgurov.expenses.domain.model.TransactionKind
 import com.evgurov.expenses.domain.repository.AccountRepository
 import com.evgurov.expenses.domain.repository.CategoryRepository
 import com.evgurov.expenses.domain.repository.TransactionRepository
@@ -75,24 +76,25 @@ class BankImporter @Inject constructor(
     }
 
     /**
-     * Загружает выписку. Операции, которые уже пришли из уведомлений (та же дата, сумма и направление),
-     * и операции из прошлых загрузок той же выписки второй раз не добавляются.
+     * Загружает выписку. Операции, которые уже есть в приложении (та же дата, сумма и направление),
+     * второй раз не добавляются.
      */
     suspend fun importStatement(statement: Statement): StatementImport = lock.withLock {
         val account = accountId(statement.bank.accountName)
         val from = statement.rows.minOf { it.date }
         val to = statement.rows.maxOf { it.date }
-        val fromNotifications = transactions.observeBetween(from, to).first()
-            .filter { it.accountId == account && it.externalId?.startsWith("stmt:") != true }
-            .toMutableList()
+        // Уже загруженное (из уведомлений, этой же или другой выписки за пересекающийся период) узнаём
+        // по дате, сумме и направлению: у разных документов банка описания одной операции отличаются.
+        val existing = transactions.observeBetween(from, to).first().filter { it.accountId == account }.toMutableList()
         val seen = mutableMapOf<String, Int>()
+        val cache = loadCategories()
         var added = 0
         var duplicates = 0
         for (row in statement.rows) {
             val op = row.operation
-            val twin = fromNotifications.firstOrNull { it.date == row.date && it.amount == op.amount && it.kind == op.kind }
+            val twin = existing.firstOrNull { it.date == row.date && it.amount == op.amount && it.kind == op.kind }
             if (twin != null) {
-                fromNotifications.remove(twin)
+                existing.remove(twin)
                 duplicates++
                 continue
             }
@@ -101,7 +103,7 @@ class BankImporter @Inject constructor(
             val inserted = transactions.insertIfNew(
                 Transaction(
                     accountId = account,
-                    categoryId = categoryId(op),
+                    categoryId = categoryId(op, cache),
                     amount = op.amount,
                     kind = op.kind,
                     date = row.date,
@@ -118,14 +120,25 @@ class BankImporter @Inject constructor(
         accounts.observeAll().first().firstOrNull { it.name == name }?.id
             ?: accounts.upsert(Account(name = name, type = AccountType.CARD))
 
-    private suspend fun categoryId(operation: BankOperation): Long {
-        val all = categories.observeAll().first()
-        val learned = transactions.merchantRules().mapNotNull { (key, id) ->
-            all.firstOrNull { it.id == id && it.kind == operation.kind }?.let { key to it.name }
-        }.toMap()
-        val name = CategoryGuesser.guess(operation, learned)
-        return all.firstOrNull { it.name == name && it.kind == operation.kind }?.id
-            ?: categories.upsert(Category(name = name, kind = operation.kind))
+    private suspend fun categoryId(operation: BankOperation, cache: CategoryCache? = null): Long {
+        val c = cache ?: loadCategories()
+        val name = CategoryGuesser.guess(operation, c.learned(operation.kind))
+        return c.all.firstOrNull { it.name == name && it.kind == operation.kind }?.id
+            ?: categories.upsert(Category(name = name, kind = operation.kind)).also { id ->
+                c.all += Category(id = id, name = name, kind = operation.kind)
+            }
+    }
+
+    private suspend fun loadCategories() =
+        CategoryCache(categories.observeAll().first().toMutableList(), transactions.merchantRules())
+
+    /** Категории и выбор пользователя по магазинам: при загрузке большой выписки читаем их один раз. */
+    private class CategoryCache(val all: MutableList<Category>, private val rules: Map<String, Long>) {
+        private val byKind = mutableMapOf<TransactionKind, Map<String, String>>()
+
+        fun learned(kind: TransactionKind): Map<String, String> = byKind.getOrPut(kind) {
+            rules.mapNotNull { (key, id) -> all.firstOrNull { it.id == id && it.kind == kind }?.let { key to it.name } }.toMap()
+        }
     }
 
     /** Пользователь сменил категорию операции: запоминаем выбор для этого магазина. */

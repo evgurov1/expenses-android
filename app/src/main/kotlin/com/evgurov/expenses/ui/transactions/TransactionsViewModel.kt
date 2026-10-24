@@ -101,7 +101,7 @@ class TransactionsViewModel @Inject constructor(
         viewModelScope.launch {
             _statementStatus.value = runCatching {
                 val statement = StatementParser.parse(extractor.fromPdf(uri))
-                    ?: return@runCatching "Не похоже на выписку по карте. Сейчас я понимаю выписки Т-Банка в PDF."
+                    ?: return@runCatching "Не похоже на выписку по карте. Сейчас я понимаю выписку и справку о движении средств Т-Банка в PDF."
                 val result = importer.importStatement(statement)
                 month.value = YearMonth.from(result.to)
                 buildString {

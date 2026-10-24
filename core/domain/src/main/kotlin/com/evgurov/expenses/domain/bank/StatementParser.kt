@@ -17,42 +17,81 @@ data class StatementRow(
 data class Statement(val bank: Bank, val rows: List<StatementRow>)
 
 /**
- * Выписка по карте из PDF. Сейчас понимает формат Т-Банка:
- * «17.09.26 06:12 18.09.26 Оплата в VKUSVILL Moskva RUS 1 425.00 ₽ 1 425.00 ₽»,
- * описание может продолжаться на следующих строках; поступления помечены «+».
+ * Выписка по карте из PDF. Понимает два документа Т-Банка:
+ * «Выписка по договору»: «17.09.26 06:12 18.09.26 Оплата в VKUSVILL Moskva RUS 1 425.00 ₽ 1 425.00 ₽»;
+ * «Справка о движении средств»: «24.10.2026 24.10.2026 -379.00 ₽ -379.00 ₽ Оплата в MOSAIC- 7607»,
+ * а на следующей строке время и продолжение описания: «07:40 07:55 COFFEE&TEA Samara RUS».
  */
 object StatementParser {
     val TBANK = Bank("statement.tbank", "Т-Банк")
 
-    private val dateFormat = DateTimeFormatter.ofPattern("dd.MM.yy")
+    private val shortDate = DateTimeFormatter.ofPattern("dd.MM.yy")
+    private val longDate = DateTimeFormatter.ofPattern("dd.MM.yyyy")
     private const val AMOUNT = """(\+ ?)?(\d{1,3}(?: \d{3})*[.,]\d{2}) ?₽"""
-    private val row = Regex("""^(\d{2}\.\d{2}\.\d{2})(?: (\d{2}:\d{2}))? \d{2}\.\d{2}\.\d{2} (.+?) $AMOUNT $AMOUNT$""")
-    private val stopWords = listOf("дата и время", "операции обработки", "описание", "операции по карте", "расходы:", "поступления:", "баланс на", "выписка по", "страница", "итого")
+
+    /** Выписка по договору: сумма в конце строки, поступления со знаком «+». */
+    private val contractRow = Regex("""^(\d{2}\.\d{2}\.\d{2})(?: (\d{2}:\d{2}))? \d{2}\.\d{2}\.\d{2} (.+?) $AMOUNT $AMOUNT$""")
+
+    /**
+     * Справка о движении средств: сначала сумма в валюте операции (бывает в другой валюте),
+     * потом в рублях — берём рублёвую; в конце последние цифры карты.
+     */
+    private val reportRow = Regex(
+        """^(\d{2}\.\d{2}\.\d{4}) \d{2}\.\d{2}\.\d{4} [+-]\d{1,3}(?: \d{3})*[.,]\d{2} \S+ ([+-])(\d{1,3}(?: \d{3})*[.,]\d{2}) ₽ ?(.*?)(?: (?:\d{4}|—))?$""",
+    )
+    private val timeLine = Regex("""^(\d{2}:\d{2}) \d{2}:\d{2}(?: (.*))?$""")
+
+    private val stopWords = listOf(
+        "дата и время", "операции обработки", "операции списания", "описание", "операции по карте", "расходы:",
+        "поступления:", "пополнения:", "баланс на", "выписка по", "страница", "итого", "ао «тбанк»", "бик ",
+        "с уважением", "руководитель",
+    )
+
+    private class Draft(val date: LocalDate, var time: String?, val income: Boolean, val amount: String, var main: String) {
+        val extra = mutableListOf<String>()
+        var expectTime = false
+    }
 
     /** Null — если текст не похож на выписку, которую мы умеем читать. */
     fun parse(text: String): Statement? {
         val lines = text.lines().map { normalize(it) }
-        if (lines.none { it.startsWith("Выписка по договору") || it.contains("Выписка по счету") || it.contains("Выписка по счёту") }) return null
+        val known = lines.any {
+            it.startsWith("Выписка по договору") || it.contains("Выписка по счету") || it.contains("Выписка по счёту") ||
+                it.startsWith("Справка о движении средств")
+        }
+        if (!known) return null
         val rows = mutableListOf<StatementRow>()
-        var current: MatchResult? = null
-        val extra = mutableListOf<String>()
+        var current: Draft? = null
 
         fun flush() {
-            val match = current ?: return
-            toRow(match, extra)?.let(rows::add)
+            current?.let { toRow(it)?.let(rows::add) }
             current = null
-            extra.clear()
         }
 
         for (line in lines) {
-            val match = row.find(line)
+            val contract = contractRow.find(line)
+            val report = if (contract == null) reportRow.find(line) else null
+            val draft = current
             when {
-                match != null -> {
+                contract != null -> {
                     flush()
-                    current = match
+                    val (date, time, description, sign, amount) = contract.destructured
+                    current = Draft(LocalDate.parse(date, shortDate), time.ifEmpty { null }, sign.isNotBlank(), amount, description)
                 }
-                current != null && line.isNotEmpty() && extra.size < 3 && "₽" !in line &&
-                    stopWords.none { line.lowercase().startsWith(it) } -> extra += line
+                report != null -> {
+                    flush()
+                    val (date, sign, amount, description) = report.destructured
+                    current = Draft(LocalDate.parse(date, longDate), null, sign == "+", amount, description).apply { expectTime = true }
+                }
+                draft != null && draft.expectTime && timeLine.matches(line) -> {
+                    val (time, rest) = timeLine.find(line)!!.destructured
+                    draft.time = time
+                    draft.expectTime = false
+                    // Описание, разорванное переносом: «Оплата в MOSAIC-» + «COFFEE&TEA Samara RUS».
+                    if (rest.isNotBlank()) draft.main = if (draft.main.endsWith("-")) draft.main + rest else "${draft.main} $rest".trim()
+                }
+                draft != null && line.isNotEmpty() && draft.extra.size < 3 && "₽" !in line &&
+                    stopWords.none { line.lowercase().startsWith(it) } && !line.all(Char::isDigit) -> draft.extra += line
                 line.isEmpty() -> Unit
                 else -> flush()
             }
@@ -61,24 +100,24 @@ object StatementParser {
         return if (rows.isEmpty()) null else Statement(TBANK, rows)
     }
 
-    private fun toRow(match: MatchResult, extra: List<String>): StatementRow? {
-        val (date, time, description, sign, amount) = match.destructured
-        val kopecks = amount.replace(" ", "").replace(',', '.').toBigDecimal().movePointRight(2).toLong()
+    private fun toRow(draft: Draft): StatementRow? {
+        val kopecks = draft.amount.replace(" ", "").replace(',', '.').toBigDecimal().movePointRight(2).toLong()
         if (kopecks <= 0) return null
-        val kind = if (sign.isNotBlank()) TransactionKind.INCOME else TransactionKind.EXPENSE
+        val kind = if (draft.income) TransactionKind.INCOME else TransactionKind.EXPENSE
+        val description = draft.main
         // Продолжение описания: у покупки это город, у перевода — номер телефона или название организации.
-        val continuation = extra.joinToString(" ")
+        val continuation = draft.extra.joinToString(" ")
         val full = listOf(description, continuation).filter { it.isNotBlank() }.joinToString(" ")
         val type = BankNotificationParser.typeOf(full.lowercase())
-        val merchant = merchantOf(description)
+        val merchant = merchantOf(if (continuation.any(Char::isDigit)) description else full)
         val note = when {
             merchant != null -> merchant
             continuation.any(Char::isLetter) && continuation.count(Char::isDigit) < 6 -> "$description $continuation"
             else -> description
         }
         return StatementRow(
-            date = LocalDate.parse(date, dateFormat),
-            time = time.ifEmpty { null },
+            date = draft.date,
+            time = draft.time,
             operation = BankOperation(TBANK, kind, kopecks, merchant ?: description, type),
             description = note,
         )
@@ -87,7 +126,7 @@ object StatementParser {
     private val purchasePrefix = Regex("""^(Оплата в|Оплата услуг|Покупка в|Покупка)\s+""", RegexOption.IGNORE_CASE)
     private val location = setOf(
         "rus", "ru", "g", "g.", "moskva", "moscow", "samara", "sankt-pete", "sankt-peterbu", "sankt-", "sankt",
-        "spb", "kazan", "ekaterinburg", "novosibirsk",
+        "spb", "kazan", "ekaterinburg", "novosibirsk", "minsk", "blr", "russia", "самара",
     )
 
     /** Название магазина для покупок: без «Оплата в», кавычек, кодов терминала и города. */

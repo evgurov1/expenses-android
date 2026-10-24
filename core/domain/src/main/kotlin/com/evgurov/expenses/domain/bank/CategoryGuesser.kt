@@ -13,9 +13,10 @@ object CategoryGuesser {
 
     private val expenseRules: List<Pair<String, List<String>>> = listOf(
         "Продукты" to listOf(
+            "ovosch", "овощ", "nuts", "kolbas", "колбас", "rybn", "рыбн", "myaso", "мясо", "hleb", "хлеб", "bakery", "пекарн",
             "metro store", "perekrest", "magazin", "магазин", "produkt",
             "пятерочк", "pyaterochk", "магнит", "magnit", "перекрест", "perekrestok", "лента", "lenta", "вкусвилл",
-            "vkusvill", "ашан", "auchan", "дикси", "dixy", "spar", "окей", "okey", "o'key", "metro c&c", "globus",
+            "vkusvill", "ашан", "auchan", "дикси", "dixy", "spar", " окей", "okey", "кэш энд керри", "metro cash", "o'key", "metro c&c", "globus",
             "глобус", "самокат", "samokat", "лавка", "lavka", "fix price", "светофор", "верный", "verny", "азбука вкуса",
             "av daily", "чижик", "chizhik", "бристоль", "bristol", "красное&белое", "krasnoe", "producty", "продукт",
         ),
@@ -26,6 +27,7 @@ object CategoryGuesser {
             "яндекс еда", "yandex eda", "eda.yandex", "delivery club", "суши", "sushi", "теремок", "teremok", "stars coffee",
         ),
         "Транспорт" to listOf(
+            "avtozapchast", "автозапчаст", "azk", "азк", " auto ", "carprice",
             "azs", "gazpromneft", "avtodor", "carwash", "автомойк", "мойк", "wash",
             "metro", "метро", "mosmetro", "тройка", "troika", "taxi", "такси", "yandex go", "yandex.go", "uber",
             "citymobil", "ситимобил", "азс", "lukoil", "лукойл", "роснефть", "rosneft", "gazprom neft", "газпромнефть",
@@ -34,7 +36,8 @@ object CategoryGuesser {
         ),
         "Покупки онлайн" to listOf(
             "ozon", "озон", "wildberries", "вайлдберриз", "wb.ru", "yandex market", "яндекс маркет", "market.yandex",
-            "aliexpress", "алиэкспресс", "sdek", "сдэк", "cdek", "lamoda", "ламода", "мегамаркет", "megamarket", "avito", "авито",
+            "aliexpress", "алиэкспресс", "sdek", "сдэк", "cdek", "dpd", " pek ", "пэк", "boxberry", "pochta", "почта россии",
+            "рамочному договору", "м.видео", "mvideo", " dns ", "eldorado", "эльдорадо", "lamoda", "ламода", "мегамаркет", "megamarket", "avito", "авито",
         ),
         "Связь и интернет" to listOf(
             "мтс", "mts", "билайн", "beeline", "мегафон", "megafon", "tele2", "теле2", "t2 ", "ростелеком",
@@ -51,6 +54,13 @@ object CategoryGuesser {
             "castorama", "максидом", "maxidom", "строител",
         ),
         "Одежда" to listOf("zara", "h&m", "uniqlo", "gloria jeans", "глория", "sportmaster", "спортмастер", "befree", "ostin", "остин", "love republic", "zolla", "золла"),
+        "Путешествия" to listOf(
+            "travel", "bankair", "avia", "авиа", "booking", "ostrovok", "островок", "sutochno", "hotel", "отель", "camp",
+        ),
+        "Красота и спорт" to listOf(
+            "gym", "fitnes", "фитнес", "nails", "barber", "барбер", "салон", "gold apple", "золотое яблоко", "letu", "летуаль",
+            "beauty", "spa ", "sport", "спорт",
+        ),
         "Развлечения" to listOf(
             "кино", "cinema", "kinopoisk", "кинопоиск", " ivi ", "okko", "spotify", "steam", "playstation", "яндекс плюс",
             "yandex plus", "plus.yandex", "театр", "музей", "boosty", "apple.com", "google play", "games", "игр",
@@ -83,6 +93,7 @@ object CategoryGuesser {
             TransactionKind.EXPENSE -> when (operation.type) {
                 OperationType.LOAN_PAYMENT -> "Платежи по кредитам"
                 OperationType.FEE -> "Услуги банка"
+                OperationType.CASH -> "Наличные"
                 else -> expenseRules.firstOrNull { (_, words) -> words.any { it in " $key " } }?.first
                     ?: if (operation.type == OperationType.TRANSFER) TRANSFERS else OTHER_EXPENSE
             }

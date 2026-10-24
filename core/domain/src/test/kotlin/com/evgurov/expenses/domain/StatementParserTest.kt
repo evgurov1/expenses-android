@@ -61,6 +61,48 @@ class StatementParserTest {
         assertEquals(1_425_50L, rows[2].operation.amount)
     }
 
+    // «Справка о движении средств» Т-Банка: время и продолжение описания на второй строке (данные вымышленные).
+    private val report = """
+        АКЦИОНЕРНОЕ ОБЩЕСТВО «ТБАНК»
+        Справка о движении средств
+        Движение средств за период с 24.04.2026 по 24.10.2026
+        Дата и время Дата Сумма в валюте Сумма операции Описание Номер
+        операции списания операции в валюте карты операции карты
+        24.10.2026 24.10.2026 -300.00 ₽ -300.00 ₽ Внешний перевод по 7607
+        09:04 09:04 номеру телефона
+        +79000000000
+        24.10.2026 24.10.2026 -379.00 ₽ -379.00 ₽ Оплата в MOSAIC- 7607
+        07:40 07:55 COFFEE&TEA Samara RUS
+        23.10.2026 23.10.2026 +2 513.00 ₽ +2 513.00 ₽ Возврат покупки через 7607
+        08:46 08:46 СБП. Лемана ПРО СБП
+        онлайн
+        АО «ТБанк» универсальная лицензия Банка России № 2673
+        БИК 044525974 ИНН 7710140679 КПП 771301001
+        1
+        30.07.2026 31.07.2026 -19 190.00 Դ -4 327.92 ₽ Снятие наличных. VBAM, 7607
+        12:00 12:05 Yerevan ARM
+        20.10.2026 20.10.2026 -70 600.00 ₽ -70 600.00 ₽ Досрочное погашение 7607
+        13:13 13:14 кредита
+        Пополнения: 2 513,00 ₽
+    """.trimIndent()
+
+    @Test
+    fun `reads tbank movement report`() {
+        val rows = StatementParser.parse(report)!!.rows
+        assertEquals(5, rows.size)
+        assertEquals("09:04", rows[0].time)
+        assertEquals("Переводы", CategoryGuesser.guess(rows[0].operation))
+        assertEquals("MOSAIC-COFFEE&TEA", rows[1].description)
+        assertEquals("Кафе и рестораны", CategoryGuesser.guess(rows[1].operation))
+        assertEquals(TransactionKind.INCOME, rows[2].operation.kind)
+        assertEquals("Проценты и кешбэк", CategoryGuesser.guess(rows[2].operation))
+        // Операция в другой валюте: берём сумму в рублях.
+        assertEquals(4_327_92L, rows[3].operation.amount)
+        assertEquals("Наличные", CategoryGuesser.guess(rows[3].operation))
+        assertEquals(LocalDate.of(2026, 10, 20), rows[4].date)
+        assertEquals("Платежи по кредитам", CategoryGuesser.guess(rows[4].operation))
+    }
+
     @Test
     fun `ignores other documents`() {
         assertNull(StatementParser.parse("График платежей по кредиту\n18.09.26 7 844.00 ₽"))
