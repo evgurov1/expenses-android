@@ -120,38 +120,41 @@ object LoanDocumentParser {
 
     fun parse(text: String): ParsedLoan {
         val normalized = text.replace(' ', ' ').replace(' ', ' ')
+        // Регэкспы работают по тексту в нижнем регистре: так не нужны флаги Unicode,
+        // которые по-разному поддерживаются в JVM и в Android (ICU).
+        val lower = normalized.lowercase()
         val payments = normalized.lines().mapNotNull(::parsePaymentLine).distinct()
         val numbered = payments.filter { !it.isEarly }
         val schedule = numbered.map { it.payment }
-        val regular = labeledAmount(normalized, "(?:ежемесячн\\w*|регулярн\\w*)\\s+плат[её]ж\\w*")
+        val regular = labeledAmount(lower, "(?:ежемесячн\\p{L}*|регулярн\\p{L}*)\\s+плат[её]ж\\p{L}*")
             ?: schedule.filter { it > 0 }.let { list ->
                 list.groupingBy { it }.eachCount().maxWithOrNull(compareBy({ it.value }, { it.key }))?.key
             }
-        val principal = labeledAmount(normalized, "сумм\\w*\\s+(?:кредита|займа)")
+        val principal = labeledAmount(lower, "сумм\\p{L}*\\s+(?:кредита|займа)")
             ?: payments.firstOrNull()?.let { p -> p.balanceAfter?.plus(p.principalPart ?: 0) }
-        val statedRate = Regex("""(?iU)(\d{1,3}(?:[.,]\d{1,3})?)\s*%\s*годовых""")
-            .find(normalized)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()
-            ?: Regex("""(?iU)ставк\w*[^\d\n]{0,40}(\d{1,3}(?:[.,]\d{1,3})?)\s*%""")
-                .find(normalized)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()
+        val statedRate = Regex("""(\d{1,3}(?:[.,]\d{1,3})?)\s*%\s*годовых""")
+            .find(lower)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()
+            ?: Regex("""ставк\p{L}*[^\d\n]{0,40}(\d{1,3}(?:[.,]\d{1,3})?)\s*%""")
+                .find(lower)?.groupValues?.get(1)?.replace(',', '.')?.toDoubleOrNull()
         val estimatedRate = if (statedRate == null) estimateRate(payments) else null
         return ParsedLoan(
-            bank = detectBank(normalized),
-            contractNumber = Regex("""(?iU)(?:номер\s+договора|договор\w*[^\n№]{0,60}№|№\s*договора)\s*:?\s*([\wА-Яа-я/-]*\d[\wА-Яа-я/-]*)""")
-                .find(normalized)?.groupValues?.get(1),
-            contractDate = Regex("""(?iU)(?:дата\s+(?:заключения|оформления)\s+договора|договор\w*[^\n]{0,80}?\sот)\s*:?\s*(\d{2}\.\d{2}\.\d{4})""")
-                .find(normalized)?.groupValues?.get(1)?.let(::parseDate),
+            bank = detectBank(lower),
+            contractNumber = Regex("""(?:номер\s+договора|договор\p{L}*[^\n№]{0,60}№|№\s*договора)\s*:?\s*([\p{L}\d/-]*\d[\p{L}\d/-]*)""")
+                .find(lower)?.groups?.get(1)?.range?.let { normalized.substring(it) },
+            contractDate = Regex("""(?:дата\s+(?:заключения|оформления)\s+договора|договор\p{L}*[^\n]{0,80}?\sот)\s*:?\s*(\d{2}\.\d{2}\.\d{4})""")
+                .find(lower)?.groupValues?.get(1)?.let(::parseDate),
             principal = principal,
             annualRate = statedRate ?: estimatedRate,
             rateIsEstimated = statedRate == null && estimatedRate != null,
             regularPayment = regular,
             termMonths = numbered.mapNotNull { it.number }.maxOrNull()
-                ?: Regex("""(?iU)срок\w*[^\d\n]{0,30}(\d{1,3})\s*(?:мес|month)""")
-                    .find(normalized)?.groupValues?.get(1)?.toIntOrNull(),
+                ?: Regex("""срок\p{L}*[^\d\n]{0,30}(\d{1,3})\s*(?:мес|month)""")
+                    .find(lower)?.groupValues?.get(1)?.toIntOrNull(),
             currentDebt = labeledAmount(
-                normalized,
-                "(?:остаток\\s+(?:основного\\s+)?(?:долга|задолженности)|осталось\\s+(?:выплатить|погасить)|текущ\\w*\\s+задолженност\\w*)",
+                lower,
+                "(?:остаток\\s+(?:основного\\s+)?(?:долга|задолженности)|осталось\\s+(?:выплатить|погасить)|текущ\\p{L}*\\s+задолженност\\p{L}*)",
             ),
-            creditLimit = labeledAmount(normalized, "(?:кредитн\\w*\\s+)?лимит\\w*"),
+            creditLimit = labeledAmount(lower, "(?:кредитн\\p{L}*\\s+)?лимит\\p{L}*"),
             payments = payments,
         )
     }
@@ -194,7 +197,7 @@ object LoanDocumentParser {
     }
 
     private fun labeledAmount(text: String, label: String): Kopecks? =
-        Regex("""(?iU)$label[^\n]{0,60}?(?<![\d.,])(\d{1,3}(?: \d{3})+(?:[.,]\d{2})?|\d+[.,]\d{2})(?![\d.,])""")
+        Regex("""$label[^\n]{0,60}?(?<![\d.,])(\d{1,3}(?: \d{3})+(?:[.,]\d{2})?|\d+[.,]\d{2})(?![\d.,])""")
             .find(text)?.groupValues?.get(1)?.let(::parseAmount)
 
     private fun parseAmount(value: String): Kopecks {
@@ -210,8 +213,6 @@ object LoanDocumentParser {
     private fun parseDate(value: String): LocalDate? =
         runCatching { LocalDate.parse(value.replace('/', '.'), dateFormat) }.getOrNull()
 
-    private fun detectBank(text: String): String? {
-        val lower = text.lowercase()
-        return banks.firstOrNull { (_, keys) -> keys.any { it in lower } }?.first
-    }
+    private fun detectBank(lower: String): String? =
+        banks.firstOrNull { (_, keys) -> keys.any { it in lower } }?.first
 }
