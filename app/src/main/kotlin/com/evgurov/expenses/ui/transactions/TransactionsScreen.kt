@@ -35,6 +35,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.LifecycleResumeEffect
+import com.evgurov.expenses.bank.BankNotificationService
 import com.evgurov.expenses.ui.components.AppCard
 import com.evgurov.expenses.domain.model.Money
 import com.evgurov.expenses.domain.model.Transaction
@@ -53,7 +56,16 @@ fun TransactionsScreen(
     viewModel: TransactionsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val skipped by viewModel.skipped.collectAsStateWithLifecycle()
     var toDelete by remember { mutableStateOf<Transaction?>(null) }
+    var selected by remember { mutableStateOf<Transaction?>(null) }
+    val context = LocalContext.current
+    // Доступ к уведомлениям включают в настройках системы — проверяем каждый раз, когда экран снова виден.
+    var bankEnabled by remember { mutableStateOf(BankNotificationService.isEnabled(context)) }
+    LifecycleResumeEffect(Unit) {
+        bankEnabled = BankNotificationService.isEnabled(context)
+        onPauseOrDispose {}
+    }
 
     Scaffold(
         topBar = {
@@ -82,6 +94,7 @@ fun TransactionsScreen(
             contentPadding = PaddingValues(bottom = 88.dp),
         ) {
             item { SummaryCard(state.summary) }
+            item { BankCard(bankEnabled, skipped, onClearSkipped = viewModel::clearSkipped) }
             if (!state.loading && state.days.isEmpty()) {
                 item {
                     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -109,12 +122,28 @@ fun TransactionsScreen(
                             Text(details.joinToString(" · "))
                         },
                         trailingContent = { SignedAmount(row.transaction.amount, row.transaction.kind) },
-                        modifier = Modifier.clickable { toDelete = row.transaction },
+                        modifier = Modifier.clickable { selected = row.transaction },
                     )
                     HorizontalDivider()
                 }
             }
         }
+    }
+
+    selected?.let { transaction ->
+        CategoryDialog(
+            transaction = transaction,
+            categories = state.categories.filter { it.kind == transaction.kind },
+            onPick = { id ->
+                viewModel.changeCategory(transaction, id)
+                selected = null
+            },
+            onDelete = {
+                selected = null
+                toDelete = transaction
+            },
+            onDismiss = { selected = null },
+        )
     }
 
     toDelete?.let { transaction ->

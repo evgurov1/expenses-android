@@ -33,6 +33,8 @@ data class Transaction(
     val kind: TransactionKind,
     val date: LocalDate,
     val note: String = "",
+    /** Метка операции из уведомления банка: по ней не добавляем одну операцию дважды. */
+    val externalId: String? = null,
 ) {
     init {
         require(amount > 0) { "Сумма операции должна быть больше нуля" }

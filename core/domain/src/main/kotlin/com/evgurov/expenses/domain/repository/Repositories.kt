@@ -25,6 +25,13 @@ interface TransactionRepository {
     fun observeBetween(from: LocalDate, to: LocalDate): Flow<List<Transaction>>
     suspend fun upsert(transaction: Transaction): Long
     suspend fun delete(transaction: Transaction)
+
+    /** Добавляет операцию, если операции с тем же [Transaction.externalId] ещё нет. */
+    suspend fun insertIfNew(transaction: Transaction): Boolean
+
+    /** Ключ магазина → id категории, которую выбрал пользователь. */
+    suspend fun merchantRules(): Map<String, Long>
+    suspend fun saveMerchantRule(merchantKey: String, categoryId: Long)
 }
 
 interface LoanRepository {

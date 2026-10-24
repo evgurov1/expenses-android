@@ -2,6 +2,9 @@ package com.evgurov.expenses.ui.transactions
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.evgurov.expenses.bank.BankImporter
+import com.evgurov.expenses.bank.SkippedNotification
+import com.evgurov.expenses.domain.model.Category
 import com.evgurov.expenses.domain.model.Transaction
 import com.evgurov.expenses.domain.repository.AccountRepository
 import com.evgurov.expenses.domain.repository.CategoryRepository
@@ -35,12 +38,14 @@ data class TransactionsUiState(
     val summary: PeriodSummary = PeriodSummary(0, 0),
     val days: List<DayGroup> = emptyList(),
     val loading: Boolean = true,
+    val categories: List<Category> = emptyList(),
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
 class TransactionsViewModel @Inject constructor(
     private val transactions: TransactionRepository,
+    private val importer: BankImporter,
     categories: CategoryRepository,
     accounts: AccountRepository,
 ) : ViewModel() {
@@ -64,6 +69,7 @@ class TransactionsViewModel @Inject constructor(
                         .groupBy { it.transaction.date }
                         .map { (date, rows) -> DayGroup(date, rows) },
                     loading = false,
+                    categories = cats,
                 )
             }
         }
@@ -72,6 +78,16 @@ class TransactionsViewModel @Inject constructor(
     fun previousMonth() = month.update { it.minusMonths(1) }
 
     fun nextMonth() = month.update { it.plusMonths(1) }
+
+    /** Уведомления банков, в которых не нашли операцию. */
+    val skipped: StateFlow<List<SkippedNotification>> = importer.skipped
+
+    fun clearSkipped() = importer.clearSkipped()
+
+    /** Смена категории; для операций из банка приложение запоминает выбор для этого магазина. */
+    fun changeCategory(transaction: Transaction, categoryId: Long) {
+        viewModelScope.launch { importer.learn(transaction, categoryId) }
+    }
 
     fun delete(transaction: Transaction) {
         viewModelScope.launch { transactions.delete(transaction) }

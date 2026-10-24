@@ -2,6 +2,7 @@ package com.evgurov.expenses.data.repository
 
 import com.evgurov.expenses.data.db.AccountDao
 import com.evgurov.expenses.data.db.CategoryDao
+import com.evgurov.expenses.data.db.MerchantRuleEntity
 import com.evgurov.expenses.data.db.TransactionDao
 import com.evgurov.expenses.data.db.toDomain
 import com.evgurov.expenses.data.db.toEntity
@@ -36,4 +37,8 @@ class RoomTransactionRepository @Inject constructor(private val dao: Transaction
 
     override suspend fun upsert(transaction: Transaction): Long = dao.upsert(transaction.toEntity())
     override suspend fun delete(transaction: Transaction) = dao.delete(transaction.toEntity())
+    override suspend fun insertIfNew(transaction: Transaction): Boolean = dao.insertIfNew(transaction.toEntity()) != -1L
+    override suspend fun merchantRules(): Map<String, Long> = dao.merchantRules().associate { it.merchant to it.categoryId }
+    override suspend fun saveMerchantRule(merchantKey: String, categoryId: Long) =
+        dao.saveMerchantRule(MerchantRuleEntity(merchantKey, categoryId))
 }

@@ -3,6 +3,7 @@ package com.evgurov.expenses.data.db
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
@@ -43,6 +44,16 @@ interface TransactionDao {
 
     @Upsert
     suspend fun upsert(transaction: TransactionEntity): Long
+
+    /** -1, если операция с такой меткой уже есть. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfNew(transaction: TransactionEntity): Long
+
+    @Query("SELECT * FROM merchant_rules")
+    suspend fun merchantRules(): List<MerchantRuleEntity>
+
+    @Upsert
+    suspend fun saveMerchantRule(rule: MerchantRuleEntity)
 
     @Delete
     suspend fun delete(transaction: TransactionEntity)

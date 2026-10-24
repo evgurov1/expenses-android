@@ -14,8 +14,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         LoanEntity::class,
         IncomeSourceEntity::class,
         LoanPaymentEntity::class,
+        MerchantRuleEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -61,6 +62,18 @@ abstract class ExpensesDatabase : RoomDatabase() {
 
     companion object {
         const val NAME = "expenses.db"
+
+        /** v5: операции из уведомлений банков и категории, выбранные пользователем для магазинов. */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `transactions` ADD COLUMN `externalId` TEXT")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_transactions_externalId` ON `transactions` (`externalId`)")
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `merchant_rules` (`merchant` TEXT NOT NULL, `categoryId` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`merchant`))",
+                )
+            }
+        }
 
         /** v4: досрочные платежи пользователя в графике. */
         val MIGRATION_3_4 = object : Migration(3, 4) {

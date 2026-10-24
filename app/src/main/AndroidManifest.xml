@@ -23,6 +23,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Читает уведомления банков, чтобы добавлять покупки и поступления. Данные остаются на телефоне. -->
+        <service
+            android:name=".bank.BankNotificationService"
+            android:exported="true"
+            android:label="Операции из уведомлений банков"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
     </application>
 
 </manifest>
