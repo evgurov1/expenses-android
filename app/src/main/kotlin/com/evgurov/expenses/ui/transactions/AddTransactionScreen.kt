@@ -14,6 +14,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Delete
+import com.evgurov.expenses.ui.components.ConfirmDeleteDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
@@ -60,6 +62,7 @@ fun AddTransactionScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val form = state.form
     var showDatePicker by remember { mutableStateOf(false) }
+    var confirmDelete by remember { mutableStateOf(false) }
 
     LaunchedEffect(form.saved) {
         if (form.saved) onDone()
@@ -68,10 +71,17 @@ fun AddTransactionScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Новая операция") },
+                title = { Text(if (form.editing != null) "Операция" else "Новая операция") },
                 navigationIcon = {
                     IconButton(onClick = onDone) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
+                    }
+                },
+                actions = {
+                    if (form.editing != null) {
+                        IconButton(onClick = { confirmDelete = true }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Удалить операцию")
+                        }
                     }
                 },
             )
@@ -132,7 +142,7 @@ fun AddTransactionScreen(
                 colors = appFieldColors(),
                 value = form.note,
                 onValueChange = viewModel::setNote,
-                label = { Text("Комментарий") },
+                label = { Text("Название или комментарий") },
                 modifier = Modifier.fillMaxWidth(),
             )
 
@@ -142,6 +152,18 @@ fun AddTransactionScreen(
                 Text("Сохранить")
             }
         }
+    }
+
+    if (confirmDelete) {
+        ConfirmDeleteDialog(
+            title = "Удалить операцию?",
+            text = "Операция на ${form.amountText} ₽ будет удалена.",
+            onConfirm = {
+                confirmDelete = false
+                viewModel.delete()
+            },
+            onDismiss = { confirmDelete = false },
+        )
     }
 
     if (showDatePicker) {

@@ -31,6 +31,7 @@ import com.evgurov.expenses.ui.loans.AssistantScreen
 import com.evgurov.expenses.ui.loans.LoansScreen
 import com.evgurov.expenses.ui.loans.PayoffScreen
 import com.evgurov.expenses.ui.transactions.AddTransactionScreen
+import com.evgurov.expenses.ui.transactions.PhotoImportScreen
 import com.evgurov.expenses.ui.transactions.TransactionsScreen
 
 private object Routes {
@@ -47,6 +48,9 @@ private object Routes {
     const val ACCOUNTS = "accounts"
     const val CATEGORIES = "categories"
     const val ADD_TRANSACTION = "transactions/add"
+    const val PHOTO_TRANSACTIONS = "transactions/photo"
+    const val EDIT_TRANSACTION = "transactions/{transactionId}/edit"
+    fun editTransaction(id: Long) = "transactions/$id/edit"
 }
 
 private data class TopLevel(val route: String, val label: String, val icon: ImageVector)
@@ -137,12 +141,25 @@ fun ExpensesNavHost() {
                 AddLoanScreen(onDone = { navController.popBackStack() })
             }
             composable(Routes.TRANSACTIONS) {
-                TransactionsScreen(onAddClick = { navController.navigate(Routes.ADD_TRANSACTION) })
+                TransactionsScreen(
+                    onAddClick = { navController.navigate(Routes.ADD_TRANSACTION) },
+                    onPhotoClick = { navController.navigate(Routes.PHOTO_TRANSACTIONS) },
+                    onEdit = { navController.navigate(Routes.editTransaction(it)) },
+                )
             }
             composable(Routes.ACCOUNTS) { AccountsScreen() }
             composable(Routes.CATEGORIES) { CategoriesScreen() }
             composable(Routes.ADD_TRANSACTION) {
                 AddTransactionScreen(onDone = { navController.popBackStack() })
+            }
+            composable(
+                Routes.EDIT_TRANSACTION,
+                arguments = listOf(navArgument("transactionId") { type = NavType.LongType }),
+            ) {
+                AddTransactionScreen(onDone = { navController.popBackStack() })
+            }
+            composable(Routes.PHOTO_TRANSACTIONS) {
+                PhotoImportScreen(onDone = { navController.popBackStack() })
             }
         }
     }

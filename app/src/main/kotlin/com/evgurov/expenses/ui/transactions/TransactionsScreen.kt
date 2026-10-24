@@ -15,6 +15,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material3.ExtendedFloatingActionButton
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -61,6 +64,8 @@ import com.evgurov.expenses.ui.theme.IncomeColor
 @Composable
 fun TransactionsScreen(
     onAddClick: () -> Unit,
+    onPhotoClick: () -> Unit,
+    onEdit: (Long) -> Unit,
     viewModel: TransactionsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -72,7 +77,6 @@ fun TransactionsScreen(
         uri?.let(viewModel::importStatement)
     }
     var toDelete by remember { mutableStateOf<Transaction?>(null) }
-    var selected by remember { mutableStateOf<Transaction?>(null) }
     val context = LocalContext.current
     // Доступ к уведомлениям включают в настройках системы — проверяем каждый раз, когда экран снова виден.
     var bankEnabled by remember { mutableStateOf(BankNotificationService.isEnabled(context)) }
@@ -98,14 +102,21 @@ fun TransactionsScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = onAddClick) {
-                Icon(Icons.Filled.Add, contentDescription = "Добавить операцию")
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SmallFloatingActionButton(onClick = onAddClick) {
+                    Icon(Icons.Filled.Add, contentDescription = "Добавить операцию вручную")
+                }
+                ExtendedFloatingActionButton(
+                    onClick = onPhotoClick,
+                    icon = { Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null) },
+                    text = { Text("По фото") },
+                )
             }
         },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(bottom = 88.dp),
+            contentPadding = PaddingValues(bottom = 150.dp),
         ) {
             item { MoneyNowCard(overview, onAccount = { editingBalance = it }) }
             item {
@@ -163,40 +174,12 @@ fun TransactionsScreen(
                             Text(details.joinToString(" · "))
                         },
                         trailingContent = { SignedAmount(row.transaction.amount, row.transaction.kind) },
-                        modifier = Modifier.clickable { selected = row.transaction },
+                        modifier = Modifier.clickable { onEdit(row.transaction.id) },
                     )
                     HorizontalDivider()
                 }
             }
         }
-    }
-
-    selected?.let { transaction ->
-        CategoryDialog(
-            transaction = transaction,
-            categories = state.categories.filter { it.kind == transaction.kind },
-            onPick = { id ->
-                viewModel.changeCategory(transaction, id)
-                selected = null
-            },
-            onDelete = {
-                selected = null
-                toDelete = transaction
-            },
-            onDismiss = { selected = null },
-        )
-    }
-
-    editingBalance?.let { item ->
-        BalanceDialog(
-            account = item.account,
-            current = item.balance,
-            onSave = {
-                viewModel.setBalance(item.account, it)
-                editingBalance = null
-            },
-            onDismiss = { editingBalance = null },
-        )
     }
 
     toDelete?.let { transaction ->

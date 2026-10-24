@@ -10,7 +10,10 @@ import com.evgurov.expenses.domain.model.TransactionKind
 import com.evgurov.expenses.domain.repository.AccountRepository
 import com.evgurov.expenses.domain.repository.CategoryRepository
 import com.evgurov.expenses.domain.repository.TransactionRepository
+import androidx.lifecycle.SavedStateHandle
+import com.evgurov.expenses.domain.bank.CategoryGuesser
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -30,6 +33,8 @@ data class TransactionForm(
     val note: String = "",
     val error: String? = null,
     val saved: Boolean = false,
+    /** Правим существующую операцию, а не создаём новую. */
+    val editing: Transaction? = null,
 )
 
 data class AddTransactionUiState(
@@ -46,9 +51,27 @@ class AddTransactionViewModel @Inject constructor(
     private val transactions: TransactionRepository,
     accounts: AccountRepository,
     categories: CategoryRepository,
+    savedState: SavedStateHandle,
 ) : ViewModel() {
 
     private val form = MutableStateFlow(TransactionForm())
+
+    init {
+        savedState.get<Long>("transactionId")?.let { id ->
+            viewModelScope.launch {
+                val t = transactions.observeAll().first().firstOrNull { it.id == id } ?: return@launch
+                form.value = TransactionForm(
+                    kind = t.kind,
+                    amountText = Money.format(t.amount, currencySymbol = "").trim(),
+                    accountId = t.accountId,
+                    categoryId = t.categoryId,
+                    date = t.date,
+                    note = t.note,
+                    editing = t,
+                )
+            }
+        }
+    }
 
     val state: StateFlow<AddTransactionUiState> = combine(
         form,
@@ -64,6 +87,14 @@ class AddTransactionViewModel @Inject constructor(
     fun setCategory(id: Long) = form.update { it.copy(categoryId = id, error = null) }
     fun setDate(date: LocalDate) = form.update { it.copy(date = date) }
     fun setNote(note: String) = form.update { it.copy(note = note) }
+
+    fun delete() {
+        val t = form.value.editing ?: return
+        viewModelScope.launch {
+            transactions.delete(t)
+            form.update { it.copy(saved = true) }
+        }
+    }
 
     fun save() {
         val current = state.value
@@ -81,6 +112,26 @@ class AddTransactionViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
+            val old = f.editing
+            if (old != null) {
+                transactions.upsert(
+                    old.copy(
+                        accountId = accountId!!,
+                        categoryId = f.categoryId!!,
+                        amount = amount!!,
+                        kind = f.kind,
+                        date = f.date,
+                        note = f.note.trim(),
+                    ),
+                )
+                // Новая категория для операции из банка или с фото — запоминаем её для этого магазина.
+                val merchant = CategoryGuesser.merchantKey(f.note)
+                if (old.externalId != null && old.categoryId != f.categoryId && merchant.isNotEmpty()) {
+                    transactions.saveMerchantRule(merchant, f.categoryId)
+                }
+                form.update { it.copy(saved = true) }
+                return@launch
+            }
             transactions.upsert(
                 Transaction(
                     accountId = accountId!!,

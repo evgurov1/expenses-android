@@ -65,6 +65,19 @@ class LoanTextExtractor @Inject constructor(
         }
     }
 
+    /**
+     * Скриншот списка операций банка: читаем построчно (название и сумма на одной строке)
+     * и с английской моделью — в названиях магазинов много латиницы.
+     */
+    suspend fun fromScreenshot(uri: Uri): String = withContext(Dispatchers.Default) {
+        val bitmap = decodeBitmap(uri)
+        try {
+            recognize(listOf(bitmap), languages = "rus+eng", pageSegMode = TessBaseAPI.PageSegMode.PSM_SINGLE_BLOCK)
+        } finally {
+            bitmap.recycle()
+        }
+    }
+
     private suspend fun ocrPdfPages(uri: Uri): String {
         val pages = mutableListOf<Bitmap>()
         context.contentResolver.openFileDescriptor(uri, "r").use { fd ->
@@ -93,12 +106,16 @@ class LoanTextExtractor @Inject constructor(
         }
     }
 
-    private suspend fun recognize(bitmaps: List<Bitmap>): String = ocrLock.withLock {
+    private suspend fun recognize(
+        bitmaps: List<Bitmap>,
+        languages: String = "rus",
+        pageSegMode: Int = TessBaseAPI.PageSegMode.PSM_AUTO,
+    ): String = ocrLock.withLock {
         val dataDir = prepareTessData()
         val tess = TessBaseAPI()
         try {
-            check(tess.init(dataDir.absolutePath, "rus")) { "Не удалось запустить распознавание" }
-            tess.pageSegMode = TessBaseAPI.PageSegMode.PSM_AUTO
+            check(tess.init(dataDir.absolutePath, languages)) { "Не удалось запустить распознавание" }
+            tess.pageSegMode = pageSegMode
             bitmaps.joinToString("\n") { bitmap ->
                 tess.setImage(bitmap)
                 tess.getUTF8Text().orEmpty()
@@ -108,14 +125,15 @@ class LoanTextExtractor @Inject constructor(
         }
     }
 
-    /** Tesseract читает модель из файла, поэтому один раз копируем её из assets. */
+    /** Tesseract читает модели из файлов, поэтому один раз копируем их из assets. */
     private fun prepareTessData(): File {
         val root = File(context.filesDir, "ocr")
-        val target = File(root, "tessdata/rus.traineddata")
-        if (!target.exists()) {
+        for (name in listOf("rus.traineddata", "eng.traineddata")) {
+            val target = File(root, "tessdata/$name")
+            if (target.exists()) continue
             target.parentFile?.mkdirs()
-            val tmp = File(target.parentFile, "rus.traineddata.tmp")
-            context.assets.open("tessdata/rus.traineddata").use { input ->
+            val tmp = File(target.parentFile, "$name.tmp")
+            context.assets.open("tessdata/$name").use { input ->
                 tmp.outputStream().use { input.copyTo(it) }
             }
             tmp.renameTo(target)
