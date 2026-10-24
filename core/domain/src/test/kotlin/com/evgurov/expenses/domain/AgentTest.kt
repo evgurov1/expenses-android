@@ -66,4 +66,18 @@ class AgentTest {
         val unknown = tools.execute(AgentPrompt.parseToolCall("<tool_call>{\"name\":\"rm\",\"arguments\":{}}</tool_call>")!!)
         assertTrue(unknown.text.startsWith("Нет инструмента"))
     }
+
+    @Test
+    fun `finds extra payment needed to close by a target month`() {
+        val tools = LoanTools(listOf(ozon, vtb), 150_000_00, emptyList(), today)
+        val all = tools.execute(AgentPrompt.parseToolCall("<tool_call>{\"name\":\"extra_for_target\",\"arguments\":{\"months\":13}}</tool_call>")!!)
+        assertTrue(all.text, all.text.startsWith("Чтобы закрыть все кредиты за 13 мес."))
+        val one = tools.execute(AgentPrompt.parseToolCall("<tool_call>{\"name\":\"extra_for_target\",\"arguments\":{\"months\":13,\"loan\":\"озон\"}}</tool_call>")!!)
+        assertTrue(one.text, one.text.startsWith("Чтобы закрыть «Кредит Ozon Банк» за 13 мес."))
+        val amount = Regex("""около ([\d\u00A0 ]+)""").find(one.text)!!.groupValues[1].filter(Char::isDigit).toLong()
+        // 197 884 ₽ за 13 месяцев при платеже 7 844 ₽: доплата порядка 9–12 тысяч.
+        assertTrue(one.text, amount in 8_000..13_000)
+        println(all.text)
+        println(one.text)
+    }
 }

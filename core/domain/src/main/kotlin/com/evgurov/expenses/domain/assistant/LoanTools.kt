@@ -53,6 +53,10 @@ class LoanTools(
                 strategy(call.arguments),
             )
             "compare_strategies" -> compare(rubles(call.arguments, "extra_monthly"))
+            "extra_for_target" -> extraForTarget(
+                call.arguments["months"]?.jsonPrimitive?.intOrNull ?: return ToolResult("Нужно число месяцев."),
+                call.arguments["loan"]?.jsonPrimitive?.contentOrNull?.takeIf { it.isNotBlank() },
+            )
             "payment_schedule" -> schedule(
                 call.arguments["extra_monthly"]?.let { rubles(call.arguments, "extra_monthly") } ?: DEFAULT_EXTRA,
                 call.arguments["months"]?.jsonPrimitive?.intOrNull?.coerceIn(1, 12) ?: 3,
@@ -75,6 +79,55 @@ class LoanTools(
                 describe(snowball, extra, 0, PayoffStrategy.SNOWBALL),
         )
     }
+
+    private fun extraForTarget(months: Int, loanQuery: String?): ToolResult {
+        if (months !in 1..600) return ToolResult("Число месяцев должно быть от 1 до 600.")
+        val target = YearMonth.from(today).plusMonths(months.toLong())
+        val scope = if (loanQuery == null) loans else {
+            val found = findLoans(loanQuery)
+            when {
+                found.isEmpty() -> return ToolResult("Кредит «$loanQuery» не найден. Есть: " + loans.joinToString(", ") { label(it) } + ".")
+                found.size > 1 -> return ToolResult("Под «$loanQuery» подходят несколько кредитов: " + found.joinToString(", ") { label(it) } + ". Уточните какой.")
+                else -> found
+            }
+        }
+        val what = if (loanQuery == null) "все кредиты" else label(scope.single())
+        // Один кредит считаем отдельно: вся доплата идёт в него.
+        fun closes(extra: Kopecks): YearMonth? =
+            PayoffPlanner.simulate(scope, extra, 0, PayoffStrategy.AVALANCHE, rollover = extra > 0, today).debtFreeMonth
+        val baseline = closes(0)
+        if (baseline != null && !baseline.isAfter(target)) {
+            return ToolResult("Чтобы закрыть $what к ${byMonth(target)}, доплачивать не нужно: по графику это случится ${monthText(baseline)}.")
+        }
+        var low = 0L
+        var high = 100_000_000_00L
+        if (closes(high)?.isAfter(target) != false) return ToolResult("За $months мес. закрыть $what не получится даже с очень большой доплатой.")
+        while (high - low > 100_00) {
+            val mid = (low + high) / 2
+            if (closes(mid)?.isAfter(target) == false) high = mid else low = mid
+        }
+        val extra = (high + 999_00) / 1000_00 * 1000_00
+        val advice = PayoffPlanner.advise(loans, extra, income = income, today = today)
+        return ToolResult(
+            "Чтобы закрыть $what за $months мес. (к ${byMonth(target)}), нужно доплачивать около ${Money.format(extra)} в месяц " +
+                "сверх обязательных платежей" + (if (loanQuery != null) " и направлять всю доплату в этот кредит" else "") + ".\n" +
+                "Без доплат: ${baseline?.let(::monthText) ?: "нескоро"}.\n" + describe(advice, extra, 0, PayoffStrategy.AVALANCHE),
+        )
+    }
+
+    private fun findLoans(query: String): List<Loan> {
+        fun norm(text: String) = translit(text.lowercase()).replace(Regex("""кредит|банк|bank|[«»"()\s.,-]"""), "")
+        val q = norm(query)
+        val exact = loans.filter { norm(label(it)) == q }
+        if (exact.isNotEmpty()) return exact
+        return loans.filter { loan ->
+            val keys = listOf(norm(loan.name), norm(loan.bank)).filter { it.isNotBlank() }
+            keys.any { it.contains(q) || (q.isNotBlank() && q.contains(it)) }
+        }
+    }
+
+    private fun translit(text: String): String = text
+        .replace("озон", "ozon").replace("т-", "т").replace("тинькофф", "тбанк").replace("tbank", "тбанк").replace("vtb", "втб")
 
     private fun schedule(extra: Kopecks, months: Int): ToolResult {
         val advice = PayoffPlanner.advise(loans, extra, income = income, today = today)
@@ -133,6 +186,13 @@ class LoanTools(
         "январе", "феврале", "марте", "апреле", "мае", "июне",
         "июле", "августе", "сентябре", "октябре", "ноябре", "декабре",
     )
+
+    private val monthsDative = listOf(
+        "январю", "февралю", "марту", "апрелю", "маю", "июню",
+        "июлю", "августу", "сентябрю", "октябрю", "ноябрю", "декабрю",
+    )
+
+    private fun byMonth(month: YearMonth) = "${monthsDative[month.monthValue - 1]} ${month.year}"
 
     private fun monthText(month: YearMonth) = "в ${monthsPrepositional[month.monthValue - 1]} ${month.year}"
 
