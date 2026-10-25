@@ -24,6 +24,10 @@
             </intent-filter>
         </activity>
 
+        <receiver
+            android:name=".reminders.PaidReceiver"
+            android:exported="false" />
+
         <!-- Читает уведомления банков, чтобы добавлять покупки и поступления. Данные остаются на телефоне. -->
         <service
             android:name=".bank.BankNotificationService"

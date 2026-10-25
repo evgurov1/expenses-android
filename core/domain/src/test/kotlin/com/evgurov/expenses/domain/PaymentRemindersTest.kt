@@ -3,6 +3,7 @@ package com.evgurov.expenses.domain
 import com.evgurov.expenses.domain.model.Loan
 import com.evgurov.expenses.domain.model.LoanType
 import com.evgurov.expenses.domain.model.Money
+import com.evgurov.expenses.domain.usecase.MadePayment
 import com.evgurov.expenses.domain.usecase.PaymentReminders
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -34,5 +35,19 @@ class PaymentRemindersTest {
         val soon = reminders.single()
         assertEquals("Через 2 дня списание ${Money.format(7_844_00)}", soon.title)
         assertTrue(PaymentReminders.forDay(listOf(ozon), listOf(5, 20), LocalDate.of(2026, 10, 25)).isEmpty())
+    }
+
+    @Test
+    fun `no reminder for a payment already made`() {
+        val day = LocalDate.of(2026, 10, 25)
+        assertEquals(listOf("2:2026-10-27"), PaymentReminders.forDay(listOf(tbank), emptyList(), day).single().paidKeys)
+        // Отмечен кнопкой «Уже оплатил».
+        assertTrue(PaymentReminders.forDay(listOf(tbank), emptyList(), day, paidKeys = setOf("2:2026-10-27")).isEmpty())
+        // Внесён 20 октября, операция «Платежи по кредитам» на 70 600 ₽.
+        val made = listOf(MadePayment(LocalDate.of(2026, 10, 20), 70_600_00))
+        assertTrue(PaymentReminders.forDay(listOf(tbank), emptyList(), day, made = made).isEmpty())
+        // Операция из прошлого месяца не считается.
+        val old = listOf(MadePayment(LocalDate.of(2026, 9, 20), 70_600_00))
+        assertEquals(1, PaymentReminders.forDay(listOf(tbank), emptyList(), day, made = old).size)
     }
 }
