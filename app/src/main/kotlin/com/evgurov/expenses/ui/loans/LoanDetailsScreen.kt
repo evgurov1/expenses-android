@@ -22,6 +22,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -55,6 +57,7 @@ fun LoanDetailsScreen(
     val details by viewModel.details.collectAsStateWithLifecycle()
     var confirmDelete by remember { mutableStateOf(false) }
     var addEarly by remember { mutableStateOf(false) }
+    var confirmClose by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -87,7 +90,25 @@ fun LoanDetailsScreen(
             contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
+            loan.closedOn?.let { closedOn ->
+                item {
+                    AppCard(contentPadding = 24.dp) {
+                        Text("Кредит погашен", style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            "${closedOn.shortTitle()}. Он не входит в долг, ПДН и напоминания о платежах.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 4.dp),
+                        )
+                    }
+                }
+                item {
+                    OutlinedButton(onClick = { viewModel.setClosed(false) }, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                        Text("Вернуть в действующие")
+                    }
+                }
+            }
+            if (loan.closedOn == null) item {
                 AppCard(contentPadding = 24.dp) {
                     Text(
                         if (loan.isCard) "Текущий долг" else "Осталось выплатить",
@@ -140,9 +161,14 @@ fun LoanDetailsScreen(
                     }
                 }
             }
-            item {
-                OutlinedButton(onClick = { addEarly = true }, modifier = Modifier.fillMaxWidth().height(48.dp)) {
-                    Text(if (loan.isCard) "Внести погашение" else "Внести досрочный платёж")
+            if (loan.closedOn == null) item {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(onClick = { addEarly = true }, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                        Text(if (loan.isCard) "Внести погашение" else "Внести досрочный платёж")
+                    }
+                    OutlinedButton(onClick = { confirmClose = true }, modifier = Modifier.fillMaxWidth().height(48.dp)) {
+                        Text(if (loan.isCard) "Карта закрыта" else "Кредит погашен")
+                    }
                 }
             }
             item {
@@ -194,6 +220,26 @@ fun LoanDetailsScreen(
                 }
             }
         }
+    }
+
+    if (confirmClose) {
+        AlertDialog(
+            onDismissRequest = { confirmClose = false },
+            title = { Text(if (details?.loan?.isCard == true) "Карта закрыта?" else "Кредит погашен?") },
+            text = {
+                Text(
+                    "Он перейдёт в «Погашенные»: не будет считаться в долге и ПДН, напоминания о платежах прекратятся. " +
+                        "Вернуть его можно в любой момент.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.setClosed(true)
+                    confirmClose = false
+                }) { Text("Да, погашен") }
+            },
+            dismissButton = { TextButton(onClick = { confirmClose = false }) { Text("Отмена") } },
+        )
     }
 
     if (addEarly) {

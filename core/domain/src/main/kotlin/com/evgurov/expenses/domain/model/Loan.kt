@@ -15,6 +15,7 @@ enum class LoanSource { MANUAL, PHOTO, CONTRACT }
  * @param monthlyPayment платёж из договора; если null, считаем сами по сумме, ставке и сроку.
  * @param currentBalance остаток долга, если пользователь знает его точнее, чем наш график.
  * @param bankSchedule график из документа банка; если он есть, используем его вместо расчётного.
+ * @param closedOn дата, когда пользователь отметил кредит погашенным; такой кредит не входит в долг, ПДН и напоминания.
  */
 data class Loan(
     val id: Long = 0,
@@ -32,6 +33,7 @@ data class Loan(
     val source: LoanSource = LoanSource.MANUAL,
     val note: String = "",
     val bankSchedule: List<ScheduleItem> = emptyList(),
+    val closedOn: LocalDate? = null,
 ) {
     val isCard: Boolean get() = type == LoanType.CREDIT_CARD
 }

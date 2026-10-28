@@ -11,12 +11,20 @@ import com.evgurov.expenses.domain.repository.IncomeRepository
 import com.evgurov.expenses.domain.repository.LoanRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.time.LocalDate
 import javax.inject.Inject
 
 class RoomLoanRepository @Inject constructor(private val dao: LoanDao) : LoanRepository {
     override fun observeAll(): Flow<List<Loan>> = dao.observeAll().map { list -> list.map { it.toDomain() } }
     override fun observe(id: Long): Flow<Loan?> = dao.observe(id).map { it?.toDomain() }
-    override suspend fun upsert(loan: Loan): Long = dao.save(loan.toEntity(), loan.toPaymentEntities(loan.id))
+    override fun observeClosed(): Flow<List<Loan>> = dao.observeClosed().map { list -> list.map { it.toDomain() } }
+    override suspend fun setClosed(id: Long, date: LocalDate?) = dao.setClosed(id, date)
+
+    // Правка кредита не должна возвращать погашенный кредит в действующие.
+    override suspend fun upsert(loan: Loan): Long {
+        val closed = loan.closedOn ?: if (loan.id != 0L) dao.closedOn(loan.id) else null
+        return dao.save(loan.copy(closedOn = closed).toEntity(), loan.toPaymentEntities(loan.id))
+    }
     override suspend fun delete(loan: Loan) = dao.delete(loan.toEntity())
 }
 

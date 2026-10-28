@@ -40,6 +40,7 @@ data class LoansUiState(
     val incomeSources: List<IncomeSource> = emptyList(),
     val nextChange: BurdenChange? = null,
     val loading: Boolean = true,
+    val closed: List<Loan> = emptyList(),
 ) {
     val totalDebt: Kopecks get() = loans.sumOf { it.balance }
 }
@@ -60,7 +61,8 @@ class LoansViewModel @Inject constructor(
         loans.observeAll(),
         incomes.observeAll(),
         transactions.observeAll(),
-    ) { loanList, sources, txs ->
+        loans.observeClosed(),
+    ) { loanList, sources, txs, closed ->
         val today = LocalDate.now()
         val month = YearMonth.from(today)
         val income = monthlyIncome(sources, txs, month)
@@ -74,6 +76,7 @@ class LoansViewModel @Inject constructor(
             incomeSources = sources,
             nextChange = burdenForecast(active, income.amount, month).firstOrNull(),
             loading = false,
+            closed = closed,
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LoansUiState())
 

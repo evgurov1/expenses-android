@@ -55,6 +55,11 @@ class LoanDetailsViewModel @Inject constructor(
         viewModelScope.launch { loans.upsert(loan) }
     }
 
+    /** Кредит погашен сегодня; null — вернуть в действующие. */
+    fun setClosed(closed: Boolean) {
+        viewModelScope.launch { loans.setClosed(loanId, if (closed) LocalDate.now() else null) }
+    }
+
     fun delete(onDeleted: () -> Unit) {
         val loan = details.value?.loan ?: return
         viewModelScope.launch {

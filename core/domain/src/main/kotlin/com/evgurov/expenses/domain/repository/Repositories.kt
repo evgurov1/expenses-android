@@ -37,6 +37,12 @@ interface TransactionRepository {
 interface LoanRepository {
     fun observeAll(): Flow<List<Loan>>
     fun observe(id: Long): Flow<Loan?>
+
+    /** Погашенные кредиты; [observeAll] их не возвращает. */
+    fun observeClosed(): Flow<List<Loan>>
+
+    /** Отметить кредит погашенным в [date] или, если null, вернуть в действующие. */
+    suspend fun setClosed(id: Long, date: LocalDate?)
     suspend fun upsert(loan: Loan): Long
     suspend fun delete(loan: Loan)
 }

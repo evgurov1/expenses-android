@@ -174,6 +174,21 @@ fun LoansScreen(
             items(state.loans, key = { it.loan.id }) { row ->
                 LoanCard(row, onClick = { onOpenLoan(row.loan.id) })
             }
+            if (state.closed.isNotEmpty()) {
+                item {
+                    SectionTitle("Погашенные", Modifier.padding(top = 12.dp, start = 4.dp))
+                }
+                items(state.closed, key = { "closed-${it.id}" }) { loan ->
+                    AppCard(onClick = { onOpenLoan(loan.id) }) {
+                        Text(loan.name, style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Погашен ${loan.closedOn?.shortTitle().orEmpty()}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
         }
     }
 

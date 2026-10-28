@@ -62,8 +62,18 @@ interface TransactionDao {
 @Dao
 abstract class LoanDao {
     @Transaction
-    @Query("SELECT * FROM loans ORDER BY id")
+    @Query("SELECT * FROM loans WHERE closedOn IS NULL ORDER BY id")
     abstract fun observeAll(): Flow<List<LoanWithPayments>>
+
+    @Transaction
+    @Query("SELECT * FROM loans WHERE closedOn IS NOT NULL ORDER BY closedOn DESC")
+    abstract fun observeClosed(): Flow<List<LoanWithPayments>>
+
+    @Query("SELECT closedOn FROM loans WHERE id = :id")
+    abstract suspend fun closedOn(id: Long): LocalDate?
+
+    @Query("UPDATE loans SET closedOn = :date WHERE id = :id")
+    abstract suspend fun setClosed(id: Long, date: LocalDate?)
 
     @Transaction
     @Query("SELECT * FROM loans WHERE id = :id")

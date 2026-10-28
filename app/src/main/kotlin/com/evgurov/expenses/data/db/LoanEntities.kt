@@ -31,6 +31,7 @@ data class LoanEntity(
     val currentBalance: Long?,
     val source: LoanSource,
     val note: String,
+    val closedOn: LocalDate? = null,
 )
 
 /** Строка графика платежей из документа банка. */
@@ -74,6 +75,7 @@ data class IncomeSourceEntity(
 fun LoanWithPayments.toDomain() = Loan(
     loan.id, loan.type, loan.name, loan.bank, loan.principal, loan.annualRate, loan.termMonths, loan.issueDate,
     loan.paymentType, loan.monthlyPayment, loan.creditLimit, loan.currentBalance, loan.source, loan.note,
+    closedOn = loan.closedOn,
     bankSchedule = payments.sortedBy { it.number }.map {
         ScheduleItem(it.number, it.dueDate, it.payment, it.principalPart, it.interestPart, it.balanceAfter, it.early)
     },
@@ -94,7 +96,7 @@ fun Loan.toPaymentEntities(loanId: Long) = bankSchedule.map {
 
 fun Loan.toEntity() = LoanEntity(
     id, type, name, bank, principal, annualRate, termMonths, issueDate,
-    paymentType, monthlyPayment, creditLimit, currentBalance, source, note,
+    paymentType, monthlyPayment, creditLimit, currentBalance, source, note, closedOn,
 )
 
 fun IncomeSourceEntity.toDomain() = IncomeSource(id, name, monthlyAmount)
