@@ -1,0 +1,103 @@
+package com.evgurov.expenses.domain
+
+import com.evgurov.expenses.domain.bank.CategoryGuesser
+import com.evgurov.expenses.domain.bank.KnownBalance
+import com.evgurov.expenses.domain.bank.StatementParser
+import com.evgurov.expenses.domain.model.TransactionKind
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+import java.time.LocalDate
+
+class StatementParserTest {
+    // Строки в том виде, как их отдаёт PdfBox из выписки Т-Банка (данные вымышленные).
+    private val text = """
+        24.10.26
+        ИВАНОВ ИВАН ИВАНОВИЧ
+        Выписка по договору №1234567890
+        Баланс на 18.09.26 36 913.36 ₽
+        Баланс на 17.10.26 18 371.02 ₽
+        •     Поступления 150 000.00 ₽
+        Операции по карте № 220070******0000 ИВАНОВ ИВАН
+        Расходы: 77 000.00 ₽
+        Дата и время Дата Сумма Сумма
+        операции обработки Описание операции в валюте счёта
+        17.09.26 18.09.26 Внутренний перевод на договор 1 935.00 ₽ 1 935.00 ₽
+        8400000000
+        17.09.26 06:12 18.09.26 Оплата в "SKURATOV COFFEE" g Samara 310.00 ₽ 310.00 ₽
+        RU
+        17.09.26 19:00 18.09.26 Оплата в VKUSVILL Moskva RUS 1 425.50 ₽ 1 425.50 ₽
+        18.09.26 18.09.26 Перевод с договора 8400000000 + 20 000.00 ₽ + 20 000.00 ₽
+        18.09.26 18.09.26 Пополнение. Система быстрых платежей + 141 517.00 ₽ + 141 517.00 ₽
+        18.09.26 18.09.26 Досрочное погашение Задолженности по 70 600.00 ₽ 70 600.00 ₽
+        Кредиту  MOSCOW RU
+        18.09.26 10:59 18.09.26 Оплата в METRO STORE 1032 SAMARA 5 018.85 ₽ 5 018.85 ₽
+        RUS
+        21.09.26 21.09.26 Пополнение через СБП. Перевод средств + 18 109.00 ₽ + 18 109.00 ₽
+        от организации
+        02.10.26 02.10.26 Комиссия за внешний перевод на 17.00 ₽ 17.00 ₽
+        mBank.perevod
+        17.10.26 22:43 17.10.26 Кэшбэк за обычные покупки + 1 674.00 ₽ + 1 674.00 ₽
+    """.trimIndent()
+
+    @Test
+    fun `reads tbank statement rows with categories`() {
+        val rows = StatementParser.parse(text)!!.rows
+        assertEquals(KnownBalance(LocalDate.of(2026, 10, 17), 18_371_02L), StatementParser.parse(text)!!.closingBalance)
+        // Внутренний перевод на свой договор пропущен.
+        assertEquals(8, rows.size)
+        val coffee = rows[0]
+        assertEquals(LocalDate.of(2026, 9, 17), coffee.date)
+        assertEquals("06:12", coffee.time)
+        assertEquals(310_00L, coffee.operation.amount)
+        assertEquals("SKURATOV COFFEE", coffee.description)
+        assertEquals("Кафе и рестораны", CategoryGuesser.guess(coffee.operation))
+
+        val categories = rows.map { CategoryGuesser.guess(it.operation) }
+        assertEquals(
+            listOf(
+                "Кафе и рестораны", "Доставка еды", "Переводы", "Платежи по кредитам", "Продукты",
+                "Зарплата", "Услуги банка", "Проценты и кешбэк",
+            ),
+            categories,
+        )
+        assertEquals(TransactionKind.INCOME, rows[2].operation.kind)
+        assertEquals(141_517_00L, rows[2].operation.amount)
+        assertEquals(1_425_50L, rows[1].operation.amount)
+    }
+
+    // «Справка о движении средств» Т-Банка (данные вымышленные): её не загружаем, в ней все счета и траты задваиваются.
+    private val report = """
+        АКЦИОНЕРНОЕ ОБЩЕСТВО «ТБАНК»
+        Справка о движении средств
+        Движение средств за период с 24.04.2026 по 24.10.2026
+        Дата и время Дата Сумма в валюте Сумма операции Описание Номер
+        операции списания операции в валюте карты операции карты
+        24.10.2026 24.10.2026 -300.00 ₽ -300.00 ₽ Внешний перевод по 7607
+        09:04 09:04 номеру телефона
+        +79000000000
+        24.10.2026 24.10.2026 -379.00 ₽ -379.00 ₽ Оплата в MOSAIC- 7607
+        07:40 07:55 COFFEE&TEA Samara RUS
+        23.10.2026 23.10.2026 +2 513.00 ₽ +2 513.00 ₽ Возврат покупки через 7607
+        08:46 08:46 СБП. Лемана ПРО СБП
+        онлайн
+        АО «ТБанк» универсальная лицензия Банка России № 2673
+        БИК 044525974 ИНН 7710140679 КПП 771301001
+        1
+        30.07.2026 31.07.2026 -19 190.00 Դ -4 327.92 ₽ Снятие наличных. VBAM, 7607
+        12:00 12:05 Yerevan ARM
+        20.10.2026 20.10.2026 -70 600.00 ₽ -70 600.00 ₽ Досрочное погашение 7607
+        13:13 13:14 кредита
+        Пополнения: 2 513,00 ₽
+    """.trimIndent()
+
+    @Test
+    fun `skips tbank movement report`() {
+        assertNull(StatementParser.parse(report))
+    }
+
+    @Test
+    fun `ignores other documents`() {
+        assertNull(StatementParser.parse("График платежей по кредиту\n18.09.26 7 844.00 ₽"))
+    }
+}
